@@ -322,11 +322,12 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
             }
         }
 
-        // ゴールライン設定がある場合のゴール判定
-        if (lines.goalLine && lastPos && totalDistanceM >= lapIntervalM * 0.5) {
+        // ゴールライン設定がある場合のゴール判定（距離制限なしで交差検知）
+        if (lines.goalLine && lastPos && (!lines.startLine || startTriggered)) {
             const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
             if (hitGoal) {
-                const remDist = Math.max(1, totalDistanceM - (nextLapDistanceM - lapIntervalM));
+                const prevMilestone = Math.max(0, nextLapDistanceM - lapIntervalM);
+                const remDist = Math.max(1, Math.round(totalDistanceM - prevMilestone));
                 recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), remDist, false);
                 swState = 2;
                 document.getElementById('startBtn').classList.remove('active');
