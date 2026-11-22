@@ -11,9 +11,9 @@
 
         /* メインUI */
         .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 62%; pointer-events: none; }
-        #display1 { font-size: 18vh; font-weight: 900; line-height: 0.85; white-space: nowrap; }
+        #display1 { font-size: 18vh; font-weight: 900; line-height: 0.85; white-space: nowrap; color: #fff; }
 
-        #sector-container { display: flex; justify-content: center; gap: 20px; font-size: 5.5vh; font-weight: 900; margin-top: 2vh; }
+        #sector-container { display: flex; justify-content: center; gap: 20px; font-size: 5.5vh; font-weight: 900; margin-top: 2vh; color: #fff; }
         .sec-item { display: flex; align-items: baseline; }
         .sec-name { color: var(--hrc-red); margin-right: 6px; font-size: 2.5vh; }
 
@@ -25,29 +25,30 @@
         /* 右側パネル */
         .right-section-wrapper { position: absolute; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
         #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
-        #lap { flex: 1; overflow-y: auto; scrollbar-width: none; pointer-events: auto; text-align: right; }
+        #lap { flex: 1; overflow-y: auto; scrollbar-width: none; pointer-events: auto; text-align: right; color: #fff; }
 
         .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px solid #222; font-size: 2.6vw; white-space: nowrap; }
         .lap-row span:first-child { color: #888; font-weight: normal; }
-        .lap-row span:last-child { font-family: 'Arial Black', sans-serif; text-align: right; }
+        .lap-row span:last-child { font-family: 'Arial Black', sans-serif; text-align: right; color: #fff; }
         .best-lap { color: var(--hrc-red) !important; font-weight: bold; }
+        .best-lap span:last-child { color: var(--hrc-red) !important; }
 
         .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
-        .val { font-size: 38px; font-weight: 900; line-height: 0.9; }
+        .val { font-size: 38px; font-weight: 900; line-height: 0.9; color: #fff; }
 
         /* デバッグ・距離情報 */
         #debug-info { position: fixed; bottom: 65px; left: 10px; font-family: monospace; font-size: 10px; color: #777; z-index: 10; pointer-events: none; }
 
         footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #000; border-top: 1px solid #333; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
         button { flex: 1; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; }
-        button.active { background: var(--hrc-red) !important; border-color: #fff; }
+        button.active { background: var(--hrc-red) !important; color: #fff !important; border-color: #fff; }
 
-        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
-        .close-btn { background: var(--hrc-red); padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; }
-        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: #fff; z-index: 10000; padding: 20px; box-sizing: border-box; }
+        .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
+        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #fff; }
         #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; }
-        #history-table td { padding: 8px; border-bottom: 1px solid #222; }
+        #history-table td { padding: 8px; border-bottom: 1px solid #222; color: #fff; }
     </style>
 </head>
 <body>
@@ -86,7 +87,7 @@
         <button id="startBtn">START</button>
         <button id="lapBtn">LAP</button>
         <button id="historyBtn">HISTORY</button>
-        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#000;">GPX</button>
+        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#000; border-color:var(--hrc-orange);">GPX</button>
         <button onclick="location.reload()">RELOAD</button>
     </footer>
 </div>
@@ -287,7 +288,6 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                     maxSpeedInLap = Math.round(currentSpeedKmh);
                 }
 
-                // handlePositionUpdate 内（currentLapPoints.push 部分）
                 let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
                     ? rawAltitudeM
                     : null;
@@ -321,11 +321,12 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
             }
         }
 
-        // ゴールライン設定がある場合のゴール判定
-        if (lines.goalLine && lastPos && totalDistanceM >= lapIntervalM * 0.5) {
+        // ゴールライン設定がある場合のゴール判定（距離制限なしで交差検知）
+        if (lines.goalLine && lastPos && (!lines.startLine || startTriggered)) {
             const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
             if (hitGoal) {
-                const remDist = Math.max(1, totalDistanceM - (nextLapDistanceM - lapIntervalM));
+                const prevMilestone = Math.max(0, nextLapDistanceM - lapIntervalM);
+                const remDist = Math.max(1, Math.round(totalDistanceM - prevMilestone));
                 recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), remDist, false);
                 swState = 2;
                 document.getElementById('startBtn').classList.remove('active');
@@ -362,7 +363,6 @@ document.getElementById('intGpsBtn').onclick = function() {
             const rawSpd = (typeof p.coords.speed === 'number' && !isNaN(p.coords.speed)) ? p.coords.speed : null;
             if (rawSpd !== null) currentSpeedKmh = rawSpd * 3.6;
 
-            // watchPosition のコールバック内
             const rawAlt = (typeof p.coords.altitude === 'number' && !isNaN(p.coords.altitude))
                 ? p.coords.altitude
                 : null;
@@ -464,7 +464,7 @@ document.getElementById('historyBtn').onclick = () => {
             <td>${timeFormat(r.splitMs)}</td>
             <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
             <td>${formatPace(r.paceSecPerKm)}</td>
-            <td style="color:var(--hrc-orange);">${r.max}</td>
+            <td style="color:var(--hrc-orange); font-weight:bold;">${r.max}</td>
         </tr>`;
     }).join('');
     document.getElementById('history-page').style.display = 'block';
@@ -547,7 +547,8 @@ window.onload = () => {
 
     mainLoop();
 };
-    if ('serviceWorker' in navigator) {
+
+if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js')
             .then(reg => console.log('SW Registered!', reg))
