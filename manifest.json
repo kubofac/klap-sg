@@ -1,6 +1,6 @@
 {
-  "name": "KLAP_DEGI_ip10",
-  "short_name": "KLAP_DEGI_ip10",
+  "name": "KLAP-SG",
+  "short_name": "KLAP-SG",
   "description": "BLEとGPSに対応したラップタイマーアプリです。",
   "start_url": "/index.html",
   "display": "fullscreen",
