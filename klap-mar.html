@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>KLAP MARATHON GPS TIMER</title>
+    <style>
+        :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; position: fixed; }
+
+        /* メインUI */
+        .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 62%; pointer-events: none; }
+        #display1 { font-size: 18vh; font-weight: 900; line-height: 0.85; white-space: nowrap; }
+
+        #sector-container { display: flex; justify-content: center; gap: 20px; font-size: 5.5vh; font-weight: 900; margin-top: 2vh; }
+        .sec-item { display: flex; align-items: baseline; }
+        .sec-name { color: var(--hrc-red); margin-right: 6px; font-size: 2.5vh; }
+
+        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 3.5vh; gap: 2vh; }
+        #display { font-size: 3.2vh; color: #fff; font-weight: 900; opacity: 0.85; }
+        #best-display { font-size: 8.5vh; color: #fff; font-weight: 900; line-height: 0.9; }
+        .best-label { font-size: 2.2vh; color: var(--hrc-red); margin-right: 12px; }
+
+        /* 右側パネル */
+        .right-section-wrapper { position: absolute; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
+        #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
+        #lap { flex: 1; overflow-y: auto; scrollbar-width: none; pointer-events: auto; text-align: right; }
+
+        .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px solid #222; font-size: 2.6vw; white-space: nowrap; }
+        .lap-row span:first-child { color: #888; font-weight: normal; }
+        .lap-row span:last-child { font-family: 'Arial Black', sans-serif; text-align: right; }
+        .best-lap { color: var(--hrc-red) !important; font-weight: bold; }
+
+        .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+        .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
+        .val { font-size: 38px; font-weight: 900; line-height: 0.9; }
+
+        /* デバッグ・距離情報 */
+        #debug-info { position: fixed; bottom: 65px; left: 10px; font-family: monospace; font-size: 10px; color: #777; z-index: 10; pointer-events: none; }
+
+        footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #000; border-top: 1px solid #333; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
+        button { flex: 1; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; }
+        button.active { background: var(--hrc-red) !important; border-color: #fff; }
+
+        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
+        .close-btn { background: var(--hrc-red); padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; }
+        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; }
+        #history-table td { padding: 8px; border-bottom: 1px solid #222; }
+    </style>
+</head>
+<body>
+
+<div id="dashboard">
+    <div class="main-ui-container">
+        <div id="display1">00:00.000</div>
+        <div id="sector-container">
+            <span class="sec-item"><span class="sec-name">S1:</span><span id="s1_val">--.---</span></span>
+            <span class="sec-item"><span class="sec-name">S2:</span><span id="s2_val">--.---</span></span>
+            <span class="sec-item"><span class="sec-name">S3:</span><span id="s3_val">--.---</span></span>
+        </div>
+        <div class="sub-times">
+            <div id="display">TOTAL 00:00.000</div>
+            <div id="best-display"><span class="best-label">BEST LAP</span>00:00.000</div>
+        </div>
+    </div>
+
+    <div class="right-section-wrapper">
+        <div id="lap-panel">
+            <div id="lap"></div>
+        </div>
+        <div class="data-column">
+            <div class="data-box"><div class="label">SPD</div><div class="val" id="speed_val">0</div></div>
+            <div class="data-box"><div class="label">MAX</div><div class="val" id="max_speed_val" style="color: var(--hrc-orange);">0</div></div>
+            <div class="data-box"><div class="label">DIST</div><div class="val" id="dist_val" style="font-size: 24px; color: #00d8ff;">0m</div></div>
+        </div>
+    </div>
+
+    <div id="debug-info">
+        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">1000</span>m
+    </div>
+
+    <footer>
+        <button id="intGpsBtn">INT GPS</button>
+        <button id="startBtn">START</button>
+        <button id="lapBtn">LAP</button>
+        <button id="historyBtn">HISTORY</button>
+        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#000;">GPX</button>
+        <button onclick="location.reload()">RELOAD</button>
+    </footer>
+</div>
+
+<div id="history-page">
+    <div class="close-btn" onclick="document.getElementById('history-page').style.display='none'">CLOSE</div>
+    <div style="overflow-y: auto; height: calc(100% - 80px);">
+        <table id="history-table">
+            <thead>
+                <tr><th>LAP</th><th>DIST</th><th>SPLIT</th><th>LAP TIME</th><th>PACE(/km)</th><th>MAX</th></tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// 未認証なら設定画面へ戻す
+if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
+    alert("認証が必要です。設定画面からパスワードを入力してください。");
+    location.href = "index.html";
+}
+
+'use strict';
+
+let swState = 0; // 0:待機, 1:計測中, 2:停止
+let startTime = 0;
+let currentLapStartTime = 0;
+let lapRecords = []; // 内部保存される距離ラップ配列
+
+let currentSpeedKmh = 0;
+let maxSpeedInLap = 0;
+let lastPos = null;
+let lastAltitudeM = null;
+let currentLapPoints = [];
+
+let isFrozen = false;
+let freezeDisplayTime = "00:00.000";
+let freezeUntil = 0;
+
+let lines = { startLine: null, goalLine: null };
+let validStartDirection = null;
+let startTriggered = false;
+
+// 距離ラップ管理用
+let lapIntervalM = 1000;
+let totalDistanceM = 0;
+let nextLapDistanceM = 1000;
+let watchId = null;
+let lapCounter = 0;
+const startCooldownMs = 5000;
+
+function calcDistanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = deg => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getIntersection(p1, p2, line) {
+    if (!line) return null;
+    const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
+    const x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
+    const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+    if (Math.abs(den) < 1e-12) return null;
+    const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
+    const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        return {
+            time: p1.time + (p2.time - p1.time) * t,
+            dir: ((x4 - x3) * (y2 - y1) - (y4 - y3) * (x2 - x1)) > 0 ? 1 : -1
+        };
+    }
+    return null;
+}
+
+function updateRecentSectorDisplay() {
+    // 直近3つの距離ラップを S1 / S2 / S3 に表示（古い順→新しい順で並べる）
+    const recent3 = lapRecords.slice(0, 3).reverse();
+    const vals = [
+        recent3[0] ? (recent3[0].lapMs / 1000).toFixed(3) : "--.---",
+        recent3[1] ? (recent3[1].lapMs / 1000).toFixed(3) : "--.---",
+        recent3[2] ? (recent3[2].lapMs / 1000).toFixed(3) : "--.---"
+    ];
+    document.getElementById('s1_val').textContent = vals[0];
+    document.getElementById('s2_val').textContent = vals[1];
+    document.getElementById('s3_val').textContent = vals[2];
+}
+
+function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual) {
+    const baseTime = currentLapStartTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitMs = Math.max(0, hitTime - startTime);
+
+    lapCounter++;
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const record = {
+        no: lapCounter,
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: [...currentLapPoints]
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    updateRecentSectorDisplay();
+
+    // 内部ストレージにも最新セッションのラップ配列を保存
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    if (!isManual) {
+        isFrozen = true;
+        freezeDisplayTime = timeFormat(lapMs);
+        freezeUntil = Date.now() + 5000;
+    }
+
+    currentLapStartTime = hitTime;
+    currentLapPoints = [];
+    maxSpeedInLap = 0;
+}
+
+function updateLapList() {
+    if (lapRecords.length === 0) {
+        document.getElementById('lap').innerHTML = '';
+        return;
+    }
+    const best = Math.min(...lapRecords.map(r => r.lapMs));
+    document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(best)}`;
+
+    document.getElementById('lap').innerHTML = lapRecords.map(r => `
+        <div class="lap-row ${r.lapMs === best ? 'best-lap' : ''}">
+            <span>L${r.no}(${r.targetDistM}m)</span>
+            <span>${timeFormat(r.lapMs)}</span>
+        </div>`).join('');
+}
+
+function formatPace(secPerKm) {
+    if (!isFinite(secPerKm) || secPerKm <= 0) return "--'--\"";
+    const totalSec = Math.round(secPerKm);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}'${sec.toString().padStart(2, '0')}"`;
+}
+
+function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null, rawAltitudeM = null) {
+    if (currLat === 0 && currLon === 0) return;
+    document.getElementById('debug-lat').textContent = currLat.toFixed(6);
+    document.getElementById('debug-lon').textContent = currLon.toFixed(6);
+    document.getElementById('debug-acc').textContent = Math.round(acc);
+
+    const cur = { lat: currLat, lon: currLon, time: now };
+
+    if (swState === 1) {
+        // スタートライン設定がある場合、交差を検知してスタート確定
+        if (lines.startLine && lastPos && !startTriggered) {
+            const hitStart = getIntersection(lastPos, cur, lines.startLine);
+            if (hitStart && (hitStart.time - startTime > startCooldownMs)) {
+                if (validStartDirection === null) validStartDirection = hitStart.dir;
+                if (hitStart.dir === validStartDirection) {
+                    startTriggered = true;
+                    startTime = hitStart.time;
+                    currentLapStartTime = hitStart.time;
+                    totalDistanceM = 0;
+                    nextLapDistanceM = lapIntervalM;
+                }
+            }
+        }
+
+        // 移動距離の積算（スタートライン未設定ならSTART押下直後から積算）
+        const canAccumulate = !lines.startLine || startTriggered;
+        if (canAccumulate && lastPos) {
+            const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
+            // GPSノイズ（精度より極端に小さい微動やワープ）を簡易フィルタ
+            if (stepM >= 0.5 && stepM < 150) {
+                const prevTotalM = totalDistanceM;
+                const prevTime = lastPos.time;
+                totalDistanceM += stepM;
+
+                // 速度算出（GPSのspeedが取れない場合は区間距離/経過時間から補完）
+                if (rawSpeedMps !== null && rawSpeedMps > 0) {
+                    currentSpeedKmh = rawSpeedMps * 3.6;
+                } else {
+                    const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
+                    currentSpeedKmh = (stepM / dtSec) * 3.6;
+                }
+                if (currentSpeedKmh > maxSpeedInLap) {
+                    maxSpeedInLap = Math.round(currentSpeedKmh);
+                }
+
+                // handlePositionUpdate 内（currentLapPoints.push 部分）
+                let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
+                    ? rawAltitudeM
+                    : null;
+
+                // 異常な高度ジャンプ（例: 1ステップで50m以上急変）を弾く簡易ガード
+                if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
+                    validEle = lastAltitudeM;
+                }
+                if (validEle !== null) {
+                    lastAltitudeM = validEle;
+                }
+
+                currentLapPoints.push({
+                    lat: cur.lat,
+                    lon: cur.lon,
+                    ele: validEle,
+                    time: new Date(cur.time).toISOString(),
+                    speed: currentSpeedKmh,
+                    distM: Math.round(totalDistanceM)
+                });
+
+                // 設定した距離間隔（lapIntervalM）に到達したか判定（線形補間で通過時刻を算出）
+                while (totalDistanceM >= nextLapDistanceM) {
+                    const ratio = (nextLapDistanceM - prevTotalM) / stepM;
+                    const clampedRatio = Math.max(0, Math.min(1, ratio));
+                    const interpTime = prevTime + (cur.time - prevTime) * clampedRatio;
+
+                    recordDistanceLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                    nextLapDistanceM += lapIntervalM;
+                }
+            }
+        }
+
+        // ゴールライン設定がある場合のゴール判定
+        if (lines.goalLine && lastPos && totalDistanceM >= lapIntervalM * 0.5) {
+            const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
+            if (hitGoal) {
+                const remDist = Math.max(1, totalDistanceM - (nextLapDistanceM - lapIntervalM));
+                recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), remDist, false);
+                swState = 2;
+                document.getElementById('startBtn').classList.remove('active');
+                document.getElementById('gpxBtn').style.display = 'block';
+            }
+        }
+    }
+
+    lastPos = cur;
+}
+
+// スマホ内部GPSのみ
+document.getElementById('intGpsBtn').onclick = function() {
+    const btn = this;
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        btn.classList.remove('active');
+        btn.style.backgroundColor = "#111";
+        btn.style.color = "#fff";
+    } else {
+        if (!navigator.geolocation) {
+            alert("この端末では内部GPSが利用できません。");
+            return;
+        }
+        btn.style.backgroundColor = "var(--hrc-orange)";
+        btn.style.color = "#000";
+
+        watchId = navigator.geolocation.watchPosition(p => {
+            btn.style.backgroundColor = "var(--hrc-red)";
+            btn.style.color = "#fff";
+            btn.classList.add('active');
+
+            const rawSpd = (typeof p.coords.speed === 'number' && !isNaN(p.coords.speed)) ? p.coords.speed : null;
+            if (rawSpd !== null) currentSpeedKmh = rawSpd * 3.6;
+
+            // watchPosition のコールバック内
+            const rawAlt = (typeof p.coords.altitude === 'number' && !isNaN(p.coords.altitude))
+                ? p.coords.altitude
+                : null;
+
+            handlePositionUpdate(
+                p.coords.latitude,
+                p.coords.longitude,
+                Date.now(),
+                p.coords.accuracy,
+                rawSpd,
+                rawAlt
+            );
+        }, err => {
+            console.warn("GPS取得エラー:", err);
+        }, { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 });
+    }
+};
+
+function timeFormat(ms) {
+    const safeMs = Math.max(0, ms);
+    const m = Math.floor(safeMs / 60000);
+    const s = Math.floor((safeMs % 60000) / 1000);
+    const ms2 = Math.floor(safeMs % 1000);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms2.toString().padStart(3, '0')}`;
+}
+
+function mainLoop() {
+    const now = Date.now();
+    if (swState === 1) {
+        document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
+        const d1 = document.getElementById('display1');
+        if (isFrozen && now < freezeUntil) {
+            d1.textContent = freezeDisplayTime;
+            d1.style.color = "#fff";
+        } else {
+            d1.textContent = timeFormat(now - (currentLapStartTime || startTime));
+            d1.style.color = "#fff";
+            isFrozen = false;
+        }
+    }
+    document.getElementById('speed_val').textContent = Math.round(currentSpeedKmh);
+    document.getElementById('max_speed_val').textContent = maxSpeedInLap;
+    document.getElementById('dist_val').textContent = `${Math.round(totalDistanceM)}m`;
+    requestAnimationFrame(mainLoop);
+}
+
+document.getElementById('startBtn').onclick = function() {
+    if (swState !== 1) {
+        lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+        document.getElementById('debug-intv').textContent = lapIntervalM;
+
+        swState = 1;
+        startTime = Date.now();
+        currentLapStartTime = startTime;
+        lapRecords = [];
+        lapCounter = 0;
+        totalDistanceM = 0;
+        nextLapDistanceM = lapIntervalM;
+        maxSpeedInLap = 0;
+        currentLapPoints = [];
+        lastAltitudeM = null;
+        validStartDirection = null;
+        startTriggered = !lines.startLine; // スタートライン未設定なら即距離積算開始
+
+        this.classList.add('active');
+        document.getElementById('gpxBtn').style.display = 'none';
+        document.getElementById('lap').innerHTML = '';
+        ['s1_val', 's2_val', 's3_val'].forEach(id => document.getElementById(id).textContent = "--.---");
+    } else {
+        swState = 2;
+        this.classList.remove('active');
+        document.getElementById('gpxBtn').style.display = 'block';
+    }
+};
+
+// 手動ラップボタン押下時も現在到達距離で内部保存
+document.getElementById('lapBtn').onclick = () => {
+    if (swState === 1) {
+        const now = Date.now();
+        const prevMilestone = nextLapDistanceM - lapIntervalM;
+        const segDist = Math.max(1, Math.round(totalDistanceM - prevMilestone));
+        recordDistanceLap(now, Math.round(totalDistanceM), segDist, true);
+    }
+};
+
+document.getElementById('historyBtn').onclick = () => {
+    if (lapRecords.length === 0) {
+        alert("ラップ履歴がありません");
+        return;
+    }
+    const bT = Math.min(...lapRecords.map(r => r.lapMs));
+    document.getElementById('history-body').innerHTML = lapRecords.map(r => {
+        const isBest = (r.lapMs === bT);
+        const timeStyle = isBest ? 'color:var(--hrc-red); font-weight:bold;' : '';
+        return `
+        <tr>
+            <td>L${r.no}</td>
+            <td>${r.targetDistM}m</td>
+            <td>${timeFormat(r.splitMs)}</td>
+            <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
+            <td>${formatPace(r.paceSecPerKm)}</td>
+            <td style="color:var(--hrc-orange);">${r.max}</td>
+        </tr>`;
+    }).join('');
+    document.getElementById('history-page').style.display = 'block';
+};
+
+document.getElementById('gpxBtn').onclick = async function() {
+    if (lapRecords.length === 0) {
+        alert("保存するデータがありません");
+        return;
+    }
+
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="KLAP_MARATHON_GPS" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata>
+    <desc>LAP_INTERVAL_M:${lapIntervalM}</desc>
+</metadata>
+<trk><name>KLAP_MARATHON_${new Date().getTime()}</name>
+<trkseg>`;
+
+    [...lapRecords].reverse().forEach(lap => {
+        if (lap.points && lap.points.length > 0) {
+            lap.points.forEach(p => {
+                const eleTag = (typeof p.ele === 'number' && !isNaN(p.ele))
+                    ? `\n<ele>${p.ele.toFixed(1)}</ele>`
+                    : '';
+
+                gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}">${eleTag}
+<time>${p.time}</time>
+<extensions><speed>${(p.speed / 3.6).toFixed(2)}</speed></extensions>
+</trkpt>`;
+            });
+        }
+    });
+
+    gpx += `\n</trkseg>\n</trk>\n</gpx>`;
+
+    const filename = `klap_marathon_${new Date().getTime()}.gpx`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const file = new File([blob], filename, { type: 'application/gpx+xml' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({
+                files: [file],
+                title: 'KLAP Marathon GPX',
+                text: `距離ラップ間隔: ${lapIntervalM}m`
+            });
+        } catch (err) {
+            if (err.name !== 'AbortError') downloadFallback(blob, filename);
+        }
+    } else {
+        downloadFallback(blob, filename);
+    }
+};
+
+function downloadFallback(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+window.onload = () => {
+    lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+    document.getElementById('debug-intv').textContent = lapIntervalM;
+
+    ['startLine', 'goalLine'].forEach(key => {
+        const lat = localStorage.getItem(key + 'P1Lat');
+        if (lat) {
+            lines[key] = {
+                p1: { lat: parseFloat(lat), lon: parseFloat(localStorage.getItem(key + 'P1Lon')) },
+                p2: { lat: parseFloat(localStorage.getItem(key + 'P2Lat')), lon: parseFloat(localStorage.getItem(key + 'P2Lon')) }
+            };
+        }
+    });
+
+    mainLoop();
+};
+</script>
+</body>
+</html>

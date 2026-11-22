@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLAP Marathon GPS Setup</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; margin: 0; }
+        #map-container { position: relative; width: 94%; margin: 10px auto; }
+        #mapid { height: 340px; width: 100%; border-radius: 8px; z-index: 1; }
+
+        #map-controls {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(255,255,255,0.92); padding: 6px; border-radius: 6px;
+            display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .control-group {
+            background: white; padding: 15px; border-radius: 8px;
+            margin: 10px auto; width: 94%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); box-sizing: border-box;
+        }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
+        select, input[type="number"], input[type="text"], button {
+            width: 100%; padding: 11px; margin-bottom: 10px;
+            border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box;
+        }
+
+        button { background-color: #444; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button:active { background-color: #222; }
+        .btn-p1 { background-color: #d9534f; margin-bottom: 0; }
+        .btn-p2 { background-color: #0275d8; margin-bottom: 0; }
+        .btn-decide { background-color: #5cb85c; font-size: 17px; margin-top: 6px; }
+        .btn-save-dist { background-color: #1565C0; font-size: 16px; margin-top: 6px; }
+        .nav-button { background-color: #004098; color: #fff; font-size: 17px; margin-top: 8px; }
+
+        .result-text { font-size: 13px; font-weight: bold; color: #007bff; margin-bottom: 6px; }
+        #instructionMessage { color: #d9534f; font-weight: bold; font-size: 14px; padding: 0 15px; }
+
+        .target-selector {
+            display: flex; gap: 16px; margin-bottom: 12px;
+            background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #ddd;
+        }
+        .target-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 0; font-size: 14px; }
+
+        .preset-chips { display: flex; gap: 6px; margin-bottom: 10px; }
+        .preset-chips button {
+            flex: 1; margin-bottom: 0; padding: 8px 4px; font-size: 13px;
+            background-color: #e9ecef; color: #333; border: 1px solid #ccc;
+        }
+        .preset-chips button:active { background-color: #d0d7de; }
+
+        /* パスワード認証画面 */
+        #authOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .auth-box {
+            background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center;
+        }
+        .auth-box h3 { margin-top: 0; color: #333; }
+        .auth-error { color: #d9534f; font-size: 13px; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <!-- パスワード認証オーバーレイ -->
+    <div id="authOverlay" style="display: none;">
+        <div class="auth-box">
+            <h3>パスワードを入力</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">このツールを開くにはパスワードが必要です。</p>
+            <input type="password" id="passInput" placeholder="パスワード">
+            <button id="authBtn">認証する</button>
+            <div id="authError" class="auth-error">パスワードが違います。</div>
+        </div>
+    </div>
+
+    <h2 style="text-align:center; margin-bottom: 6px;">KLAP Marathon GPS 設定</h2>
+    <p id="instructionMessage">スマホの内部GPSから現在地を取得中...</p>
+
+    <div id="map-container">
+        <div id="mapid"></div>
+        <div id="map-controls">
+            <button class="btn-p1" id="btnP1">P1設置</button>
+            <button class="btn-p2" id="btnP2">P2設置</button>
+        </div>
+    </div>
+
+    <!-- 1. スタート・ゴールライン設定 -->
+    <div class="control-group">
+        <label>1. スタート / ゴールライン設定（地図上でP1・P2配置）</label>
+        <div class="target-selector">
+            <label><input type="radio" name="targetLine" value="startLine" checked> スタートライン</label>
+            <label><input type="radio" name="targetLine" value="goalLine"> ゴールライン</label>
+        </div>
+
+        <div id="lineStatusSummary" class="result-text" style="color:#333;">
+            ライン状態: ST:-- / GOAL:--
+        </div>
+
+        <button class="btn-decide" id="btnDecideLine">選択中のラインを保存</button>
+        <button id="btnClearLine" style="background-color: #777;">選択中のラインを解除</button>
+        <button id="clearAllLines" style="background-color: #f0ad4e; color: #fff;">ST・GOALラインをクリア</button>
+    </div>
+
+    <!-- 2. 自動ラップ計測距離（m）設定 -->
+    <div class="control-group">
+        <label for="lapIntervalInput">2. ラップ計測距離設定（指定距離 m ごとに自動ラップ記録）</label>
+        <div class="preset-chips">
+            <button type="button" onclick="setQuickDistance(400)">400m</button>
+            <button type="button" onclick="setQuickDistance(500)">500m</button>
+            <button type="button" onclick="setQuickDistance(1000)">1000m (1km)</button>
+            <button type="button" onclick="setQuickDistance(5000)">5000m (5km)</button>
+        </div>
+        <input type="number" id="lapIntervalInput" min="10" step="10" placeholder="例: 1000">
+
+        <div id="distanceSummary" class="result-text" style="color:#333; margin-top: 2px;">
+            ラップ間隔設定: 未設定
+        </div>
+        <button class="btn-save-dist" id="btnSaveInterval">ラップ距離（m）を保存</button>
+
+        <button class="nav-button" onclick="location.href='klap-degi-ip10x.html'">ラップタイマー画面（黒）へ移動</button>
+        <button class="nav-button" onclick="location.href='klap-degi-ip10xw.html'">ラップタイマー画面（白）へ移動</button>
+    </div>
+
+    <!-- 3. カスタムコースプリセット -->
+    <div class="control-group">
+        <label>3. カスタムコースプリセット（ライン＋ラップ距離）</label>
+        <select id="courseSelect" onchange="toggleDeleteButton()">
+            <option value="">-- 保存済みコースを選択 --</option>
+        </select>
+
+        <div style="margin-top: 5px; margin-bottom: 12px; padding: 12px; background: #eef7ff; border: 1px solid #bce0ff; border-radius: 8px;">
+            <label style="font-weight: bold; font-size: 14px; color: #1565C0; display: block; margin-bottom: 5px;">現在のライン＆ラップ距離をコース保存</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="newCourseName" placeholder="例：河川敷コース (1kmラップ)" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+                <button onclick="saveNewCustomCourse()" style="width: auto; margin-bottom: 0; padding: 8px 14px; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">追加保存</button>
+            </div>
+        </div>
+
+        <button id="applyCourseButton">選択コースを反映</button>
+        <button id="deleteCourseButton" onclick="deleteSelectedCustomCourse()" style="background-color: #d9534f; display: none; margin-top: 4px;">選択中のコースを削除</button>
+        <div id="selectedCourseDisplay" class="result-text">未選択</div>
+    </div>
+
+    <div class="control-group" style="background: #fff0f0;">
+        <button id="resetStorageButton" style="background: #d9534f;">全設定を初期化（認証は維持）</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // パスワード設定（"klap2026" のBase64）
+        const TARGET_TOKEN = "a2xhcDIwMjY=";
+        const AUTH_STORAGE_KEY = "klap_auth_v1";
+        const STORAGE_KEY_INTERVAL = "marathon_lap_interval_m";
+
+        function checkPassword() {
+            const inputVal = document.getElementById('passInput').value.trim();
+            const inputToken = btoa(unescape(encodeURIComponent(inputVal)));
+            if (inputToken === TARGET_TOKEN) {
+                document.getElementById('authOverlay').style.display = 'none';
+                localStorage.setItem(AUTH_STORAGE_KEY, TARGET_TOKEN);
+            } else {
+                document.getElementById('authError').style.display = 'block';
+            }
+        }
+
+        (function() {
+            const overlay = document.getElementById('authOverlay');
+            if (localStorage.getItem(AUTH_STORAGE_KEY) === TARGET_TOKEN) {
+                overlay.style.display = 'none';
+            } else {
+                overlay.style.display = 'flex';
+            }
+            document.getElementById('authBtn').onclick = checkPassword;
+            document.getElementById('passInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') checkPassword();
+            });
+        })();
+
+        let map, p1Marker, p2Marker, gpsCircle;
+        let p1Temp = null, p2Temp = null;
+        let activeLines = { startLine: null, goalLine: null };
+
+        function initMap() {
+            map = L.map('mapid').setView([35.68, 139.76], 15);
+
+            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+                maxZoom: 18,
+                attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>'
+            }).addTo(map);
+
+            if (!navigator.geolocation) {
+                document.getElementById('instructionMessage').textContent = "この端末ではGPSが利用できません。";
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(pos => {
+                const latlng = [pos.coords.latitude, pos.coords.longitude];
+                const acc = pos.coords.accuracy || 10;
+                gpsCircle = L.circle(latlng, { radius: acc, color: '#0275d8', fillOpacity: 0.25 }).addTo(map);
+                map.setView(latlng, 17);
+                document.getElementById('instructionMessage').textContent =
+                    `内部GPS取得完了（精度 約${Math.round(acc)}m）。スタート/ゴールを設定してください。`;
+            }, err => {
+                document.getElementById('instructionMessage').textContent =
+                    "現在地を取得できませんでした。位置情報許可を確認し、地図を移動して設置してください。";
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        }
+
+        function placeMarker(type) {
+            const center = map.getCenter();
+            if (type === 'p1') {
+                if (p1Marker) map.removeLayer(p1Marker);
+                p1Marker = L.marker(center, { draggable: true }).addTo(map);
+                p1Temp = center;
+                p1Marker.on('dragend', e => { p1Temp = e.target.getLatLng(); updatePreviewLine(); });
+            } else {
+                if (p2Marker) map.removeLayer(p2Marker);
+                p2Marker = L.marker(center, { draggable: true }).addTo(map);
+                p2Temp = center;
+                p2Marker.on('dragend', e => { p2Temp = e.target.getLatLng(); updatePreviewLine(); });
+            }
+            updatePreviewLine();
+        }
+
+        function getLineColor(target) {
+            return target === 'startLine' ? '#E4002B' : '#28a745';
+        }
+
+        function updatePreviewLine() {
+            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            if (activeLines[target]) map.removeLayer(activeLines[target]);
+            if (p1Temp && p2Temp) {
+                activeLines[target] = L.polyline([p1Temp, p2Temp], {
+                    color: getLineColor(target), weight: 4, dashArray: '6, 8'
+                }).addTo(map);
+            }
+        }
+
+        function drawSavedLines() {
+            ['startLine', 'goalLine'].forEach(t => {
+                if (activeLines[t]) { map.removeLayer(activeLines[t]); activeLines[t] = null; }
+                const lat1 = localStorage.getItem(t + 'P1Lat');
+                const lon1 = localStorage.getItem(t + 'P1Lon');
+                const lat2 = localStorage.getItem(t + 'P2Lat');
+                const lon2 = localStorage.getItem(t + 'P2Lon');
+                if (lat1 && lon1 && lat2 && lon2) {
+                    activeLines[t] = L.polyline([[lat1, lon1], [lat2, lon2]], {
+                        color: getLineColor(t), weight: 4
+                    }).addTo(map);
+                }
+            });
+        }
+
+        document.getElementById('btnP1').onclick = () => placeMarker('p1');
+        document.getElementById('btnP2').onclick = () => placeMarker('p2');
+
+        document.getElementById('btnDecideLine').onclick = () => {
+            if (!p1Temp || !p2Temp) {
+                alert("P1とP2の両方を地図上に設置してください。");
+                return;
+            }
+            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            localStorage.setItem(target + 'P1Lat', p1Temp.lat);
+            localStorage.setItem(target + 'P1Lon', p1Temp.lng);
+            localStorage.setItem(target + 'P2Lat', p2Temp.lat);
+            localStorage.setItem(target + 'P2Lon', p2Temp.lng);
+
+            p1Temp = null; p2Temp = null;
+            if (p1Marker) { map.removeLayer(p1Marker); p1Marker = null; }
+            if (p2Marker) { map.removeLayer(p2Marker); p2Marker = null; }
+
+            drawSavedLines();
+            displayStatus();
+            alert((target === 'startLine' ? 'スタートライン' : 'ゴールライン') + " を保存しました。");
+        };
+
+        document.getElementById('btnClearLine').onclick = () => {
+            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            if (confirm((target === 'startLine' ? 'スタートライン' : 'ゴールライン') + " を解除しますか？")) {
+                ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(target + k));
+                if (activeLines[target]) { map.removeLayer(activeLines[target]); activeLines[target] = null; }
+                displayStatus();
+            }
+        };
+
+        document.getElementById('clearAllLines').onclick = () => {
+            if (confirm("スタートラインとゴールラインを両方クリアしますか？")) {
+                ['startLine', 'goalLine'].forEach(t => {
+                    ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(t + k));
+                    if (activeLines[t]) { map.removeLayer(activeLines[t]); activeLines[t] = null; }
+                });
+                displayStatus();
+            }
+        };
+
+        // ラップ距離間隔（m）の保存・読込
+        function setQuickDistance(meters) {
+            document.getElementById('lapIntervalInput').value = meters;
+        }
+
+        function saveLapInterval() {
+            const val = Number(document.getElementById('lapIntervalInput').value);
+            if (!val || val <= 0) {
+                alert("ラップ距離（m）は1以上の数値を入力してください。");
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY_INTERVAL, String(val));
+            displayStatus();
+            alert(`ラップ計測距離を ${val}m ごとに設定しました。`);
+        }
+
+        function loadIntervalInputFromStorage() {
+            const saved = localStorage.getItem(STORAGE_KEY_INTERVAL);
+            document.getElementById('lapIntervalInput').value = saved || '1000';
+            if (!saved) {
+                localStorage.setItem(STORAGE_KEY_INTERVAL, '1000');
+            }
+        }
+
+        document.getElementById('btnSaveInterval').onclick = saveLapInterval;
+
+        function displayStatus() {
+            const stOk = localStorage.getItem('startLineP1Lat') ? "OK" : "--";
+            const glOk = localStorage.getItem('goalLineP1Lat') ? "OK" : "--";
+            document.getElementById('lineStatusSummary').textContent = `ライン状態: ST:${stOk} / GOAL:${glOk}`;
+
+            const interval = localStorage.getItem(STORAGE_KEY_INTERVAL);
+            document.getElementById('distanceSummary').textContent =
+                interval ? `ラップ間隔設定: ${interval}m ごとに記録` : "ラップ間隔設定: 未設定";
+        }
+
+        // カスタムコースプリセット（ライン＋ラップ距離）
+        function updateCourseSelectMenu() {
+            const select = document.getElementById('courseSelect');
+            select.innerHTML = '<option value="">-- 保存済みコースを選択 --</option>';
+            const list = JSON.parse(localStorage.getItem('customMarathonList')) || [];
+            list.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = `🏃 ${item.name}`;
+                select.appendChild(opt);
+            });
+            toggleDeleteButton();
+        }
+
+        function toggleDeleteButton() {
+            const id = document.getElementById('courseSelect').value;
+            document.getElementById('deleteCourseButton').style.display = id ? 'block' : 'none';
+        }
+
+        function saveNewCustomCourse() {
+            const name = document.getElementById('newCourseName').value.trim();
+            if (!name) { alert("コース名を入力してください。"); return; }
+
+            const id = 'course_' + Date.now();
+            const payload = {
+                id,
+                name,
+                startLine: {
+                    p1Lat: localStorage.getItem('startLineP1Lat'),
+                    p1Lon: localStorage.getItem('startLineP1Lon'),
+                    p2Lat: localStorage.getItem('startLineP2Lat'),
+                    p2Lon: localStorage.getItem('startLineP2Lon')
+                },
+                goalLine: {
+                    p1Lat: localStorage.getItem('goalLineP1Lat'),
+                    p1Lon: localStorage.getItem('goalLineP1Lon'),
+                    p2Lat: localStorage.getItem('goalLineP2Lat'),
+                    p2Lon: localStorage.getItem('goalLineP2Lon')
+                },
+                lapIntervalM: localStorage.getItem(STORAGE_KEY_INTERVAL) || '1000'
+            };
+
+            const list = JSON.parse(localStorage.getItem('customMarathonList')) || [];
+            list.push(payload);
+            localStorage.setItem('customMarathonList', JSON.stringify(list));
+
+            document.getElementById('newCourseName').value = '';
+            updateCourseSelectMenu();
+            document.getElementById('courseSelect').value = id;
+            toggleDeleteButton();
+            alert(`「${name}」を保存しました。`);
+        }
+
+        document.getElementById('applyCourseButton').onclick = () => {
+            const id = document.getElementById('courseSelect').value;
+            if (!id) return;
+            const list = JSON.parse(localStorage.getItem('customMarathonList')) || [];
+            const item = list.find(c => c.id === id);
+            if (!item) return;
+
+            const applyLine = (prefix, lineObj) => {
+                if (lineObj && lineObj.p1Lat && lineObj.p1Lon && lineObj.p2Lat && lineObj.p2Lon) {
+                    localStorage.setItem(prefix + 'P1Lat', lineObj.p1Lat);
+                    localStorage.setItem(prefix + 'P1Lon', lineObj.p1Lon);
+                    localStorage.setItem(prefix + 'P2Lat', lineObj.p2Lat);
+                    localStorage.setItem(prefix + 'P2Lon', lineObj.p2Lon);
+                } else {
+                    ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(prefix + k));
+                }
+            };
+
+            applyLine('startLine', item.startLine);
+            applyLine('goalLine', item.goalLine);
+
+            if (item.lapIntervalM) {
+                localStorage.setItem(STORAGE_KEY_INTERVAL, String(item.lapIntervalM));
+            }
+
+            loadIntervalInputFromStorage();
+            drawSavedLines();
+            displayStatus();
+            document.getElementById('selectedCourseDisplay').textContent = item.name + " 反映完了";
+
+            if (item.startLine?.p1Lat && item.startLine?.p1Lon) {
+                map.setView([item.startLine.p1Lat, item.startLine.p1Lon], 17);
+            }
+        };
+
+        function deleteSelectedCustomCourse() {
+            const selectEl = document.getElementById('courseSelect');
+            const id = selectEl.value;
+            if (!id) return;
+            const name = selectEl.options[selectEl.selectedIndex].text;
+            if (!confirm(`「${name}」を削除しますか？`)) return;
+
+            let list = JSON.parse(localStorage.getItem('customMarathonList')) || [];
+            list = list.filter(c => c.id !== id);
+            localStorage.setItem('customMarathonList', JSON.stringify(list));
+            updateCourseSelectMenu();
+            document.getElementById('selectedCourseDisplay').textContent = "未選択";
+        }
+
+        document.getElementById('resetStorageButton').onclick = () => {
+            if (confirm("認証を維持したまま、コース・ライン・ラップ距離などの設定を初期化しますか？")) {
+                const preservedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+                const keysToRemove = [
+                    STORAGE_KEY_INTERVAL,
+                    'customMarathonList',
+                    'marathon_last_laps'
+                ];
+                ['startLine', 'goalLine'].forEach(t => {
+                    ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => keysToRemove.push(t + k));
+                });
+
+                keysToRemove.forEach(key => localStorage.removeItem(key));
+                if (preservedAuth === TARGET_TOKEN) {
+                    localStorage.setItem(AUTH_STORAGE_KEY, TARGET_TOKEN);
+                }
+                location.reload();
+            }
+        };
+
+        window.onload = () => {
+            initMap();
+            loadIntervalInputFromStorage();
+            updateCourseSelectMenu();
+            drawSavedLines();
+            displayStatus();
+        };
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('SW Registered!', reg))
+                    .catch(err => console.log('SW Register Failed!', err));
+            });
+        }
+    </script>
+</body>
+</html>
