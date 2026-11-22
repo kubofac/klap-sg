@@ -1,8 +1,8 @@
-const CACHE_NAME = 'KLAP DEGI GPS';
+const CACHE_NAME = 'KLAP-SG';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/klap-degi-gps10.html',
+  '/klap-mar.html',
   '/manifest.json',
   '/service-worker.js',
   '/192.png',
