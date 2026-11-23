@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>KLAP MARATHON ANALYZER</title>
+
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
+    <style>
+        :root { --hrc-red: #ff4444; --hrc-blue: #33ccff; --hrc-purple: #e040fb; --hrc-orange: #ff9900; --hrc-yellow: #ffff00; --hrc-green: #33ff77; }
+        html, body { overflow: hidden; width: 100%; height: 100%; background: #000; margin: 0; padding: 0; font-family: sans-serif; color: #fff; position: fixed; touch-action: none; }
+        #main-container { display: flex; height: calc(100vh - 105px); width: 100%; }
+        #map { width: 35%; height: 100%; border-right: 1px solid #444; background: #111; position: relative; z-index: 1; }
+        #chart-area { width: 65%; height: 100%; background: #000; position: relative; z-index: 1; }
+
+        #data-dashboard {
+            position: fixed;
+            z-index: 9999;
+            background: rgba(0,0,0,0.88);
+            border-radius: 8px;
+            border: 2px solid #666;
+            min-width: 155px;
+            touch-action: none;
+            top: 20px;
+            right: 20px;
+        }
+        .panel-header {
+            background: #333;
+            color: #fff;
+            font-size: 11px;
+            padding: 8px 10px;
+            text-align: center;
+            cursor: move;
+            border-radius: 6px 6px 0 0;
+            user-select: none;
+            font-weight: bold;
+            border-bottom: 1px solid #444;
+        }
+
+        #dash-content { padding: 10px; font-family: 'Courier New', monospace; font-size: 11px; pointer-events: none; }
+        .dash-grid { display: grid; grid-template-columns: 54px 1fr; gap: 8px; text-align: right; margin-bottom: 5px; align-items: center; }
+        .grid-label { text-align: left; color: #888; }
+
+        #map-adjust-ctrls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            display: grid;
+            grid-template-columns: repeat(3, 35px);
+            grid-template-rows: repeat(2, 35px);
+            gap: 2px;
+            padding-top: env(safe-area-inset-top);
+        }
+
+        .adj-btn {
+            width: 35px;
+            height: 35px;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .sector-pin-label {
+            background: rgba(0, 0, 0, 0.85);
+            color: var(--hrc-yellow);
+            border: 1px solid var(--hrc-yellow);
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-size: 10px;
+            font-weight: bold;
+            box-shadow: none;
+        }
+        .leaflet-tooltip.sector-pin-label::before { display: none; }
+
+        #lap-list-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 10000; flex-direction: column; padding: 15px; box-sizing: border-box; }
+        .sector-summary-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        .summary-card {
+            background: #141414;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .summary-card.best-card { border-color: var(--hrc-red); }
+        .summary-card.slow-card { border-color: var(--hrc-blue); }
+
+        #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
+        .lap-row { display: grid; grid-template-columns: 48px 72px 1fr 1fr 78px 54px 76px; gap: 4px; padding: 11px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
+        .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
+        .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
+        .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
+
+        .lap-best { color: var(--hrc-red) !important; font-weight: bold; }
+        .lap-slow { color: var(--hrc-blue) !important; font-weight: bold; }
+        .stat-best { background: var(--hrc-orange); color: #000 !important; font-weight: bold; border-radius: 2px; }
+
+        #controls { position: fixed; bottom: 0; left: 0; width: 100%; height: 105px; background: #111; z-index: 999; padding: 5px; box-sizing: border-box; }
+        .ctrl-row { display: flex; align-items: center; gap: 5px; height: 45px; overflow-x: auto; }
+        .mini-btn { background: #444; color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; height: 35px; cursor: pointer; font-weight: bold; flex-shrink: 0; }
+        #seek-bar {
+            width: 100%;
+            height: 44px;
+            accent-color: var(--hrc-red);
+            cursor: pointer;
+            touch-action: pan-x;
+        }
+    </style>
+</head>
+<body>
+
+<div id="main-container">
+    <div id="map">
+        <div id="map-adjust-ctrls">
+            <button class="adj-btn" style="grid-column: 2; grid-row: 1;" onclick="adjustMap(0.00001, 0)">↑</button>
+            <button class="adj-btn" style="grid-column: 1; grid-row: 2;" onclick="adjustMap(0, -0.00001)">←</button>
+            <button class="adj-btn" style="grid-column: 2; grid-row: 2;" onclick="adjustMap(-0.00001, 0)">↓</button>
+            <button class="adj-btn" style="grid-column: 3; grid-row: 2;" onclick="adjustMap(0, 0.00001)">→</button>
+        </div>
+    </div>
+    <div id="chart-area">
+        <div id="data-dashboard">
+            <div class="panel-header" id="dash-handle">✜ DRAG HERE</div>
+            <div id="dash-content">
+                <div class="dash-grid"><span class="grid-label">TIME</span><span id="p-time">0:00.00</span></div>
+                <div class="dash-grid"><span class="grid-label">SPD</span><span id="p-spd">0</span></div>
+                <div class="dash-grid"><span class="grid-label">ELEV</span><span id="p-ele">0.0m</span></div>
+                <div class="dash-grid"><span class="grid-label">DIST</span><span id="p-dist">0m</span></div>
+                <hr style="border:0; border-top:1px solid #333;">
+                <div class="dash-grid" style="color:var(--hrc-yellow)"><span class="grid-label">A-B</span><span id="p-ab">-</span></div>
+            </div>
+        </div>
+        <div style="height:100%; width:100%;"><canvas id="mainChart"></canvas></div>
+    </div>
+</div>
+
+<div id="controls">
+    <div class="ctrl-row">
+        <button class="mini-btn" id="playBtn" style="background:var(--hrc-red)">PLAY</button>
+        <button class="mini-btn" id="fileBtn">OPEN GPX</button>
+        <button class="mini-btn" id="openListBtn" style="background:var(--hrc-blue)">LAP LIST</button>
+        <button class="mini-btn" id="btnSetA" style="background:var(--hrc-yellow); color:#000">SET A</button>
+        <button class="mini-btn" id="btnSetB" style="background:var(--hrc-yellow); color:#000">SET B</button>
+        <button class="mini-btn" onclick="location.reload()">RESET</button>
+    </div>
+    <input type="range" id="seek-bar" value="0">
+    <input type="file" id="fileInput" accept=".gpx" style="display:none">
+</div>
+
+<div id="lap-list-overlay">
+    <h3 style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
+    <div class="sector-summary-bar">
+        <div class="summary-card best-card">
+            <div style="color:var(--hrc-red); font-weight:bold;">BEST SECTOR</div>
+            <div id="best-sector-summary" style="margin-top:3px;">-</div>
+        </div>
+        <div class="summary-card slow-card">
+            <div style="color:var(--hrc-blue); font-weight:bold;">SLOWEST SECTOR</div>
+            <div id="slow-sector-summary" style="margin-top:3px;">-</div>
+        </div>
+    </div>
+    <div id="lap-list-content"></div>
+    <button class="mini-btn" style="margin-top:12px; width:100%; height:48px; background:var(--hrc-blue); font-size:15px;" onclick="closeLapList()">CLOSE</button>
+</div>
+
+<script>
+'use strict';
+let map, markerP, mainChart, fullRunData = null, distanceSectors = [];
+let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
+let latOffset = 0, lonOffset = 0;
+let gpxLapIntervalM = 1000;
+
+window.onload = () => {
+    map = L.map('map', {
+        zoomControl: false,
+        maxZoom: 24,
+        attributionControl: false
+    }).setView([35.68, 139.76], 15);
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 24,
+        maxNativeZoom: 18
+    }).addTo(map);
+
+    L.control.attribution({ prefix: 'Esri' }).addTo(map);
+
+    markerP = L.circleMarker([0, 0], { color: '#33ccff', fillColor: '#000', radius: 7, fillOpacity: 1, weight: 3 }).addTo(map);
+    makeDraggable(document.getElementById('data-dashboard'), document.getElementById('dash-handle'));
+
+    const seekBar = document.getElementById('seek-bar');
+    const handleLinearSeek = (e) => {
+        if (isPlaying) {
+            isPlaying = false;
+            document.getElementById('playBtn').innerText = "PLAY";
+        }
+        currentFrame = parseInt(e.target.value, 10) || 0;
+        updateFrame();
+    };
+    seekBar.addEventListener('input', handleLinearSeek);
+    seekBar.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
+    seekBar.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
+};
+
+function makeDraggable(el, handle) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    handle.onmousedown = dragStart;
+    handle.ontouchstart = dragStart;
+
+    function dragStart(e) {
+        e = e || window.event;
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        el.style.right = 'auto';
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+
+        pos3 = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+        pos4 = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+
+        document.onmouseup = dragEnd;
+        document.ontouchend = dragEnd;
+        document.onmousemove = dragMove;
+        document.ontouchmove = dragMove;
+    }
+
+    function dragMove(e) {
+        let cx = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+        let cy = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+        pos1 = pos3 - cx;
+        pos2 = pos4 - cy;
+        pos3 = cx;
+        pos4 = cy;
+        el.style.top = (el.offsetTop - pos2) + "px";
+        el.style.left = (el.offsetLeft - pos1) + "px";
+    }
+
+    function dragEnd() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+        document.ontouchend = null;
+        document.ontouchmove = null;
+    }
+}
+
+function adjustMap(dLat, dLon) { latOffset += dLat; lonOffset += dLon; updateUI(); }
+
+document.getElementById('fileBtn').onclick = () => document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+        fullRunData = null;
+        distanceSectors = [];
+        window.isMapInit = false;
+        currentFrame = 0;
+        idxA = null;
+        idxB = null;
+        isPlaying = false;
+        document.getElementById('playBtn').innerText = "PLAY";
+
+        const xml = new DOMParser().parseFromString(evt.target.result, "text/xml");
+        parseMarathonMeta(xml);
+        processFullRunGPX(xml);
+        renderSectorList();
+        updateUI();
+        document.getElementById('lap-list-overlay').style.display = 'flex';
+    };
+    reader.readAsText(file);
+};
+
+function parseMarathonMeta(xml) {
+    gpxLapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+    const desc = xml.getElementsByTagName('desc')[0]?.textContent || '';
+    const match = desc.match(/LAP_INTERVAL_M:(\d+)/i);
+    if (match && Number(match[1]) > 0) {
+        gpxLapIntervalM = Number(match[1]);
+    }
+}
+
+function calcDistanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = deg => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function smoothMovingAverage(values, halfWindow = 2) {
+    if (!Array.isArray(values) || values.length === 0) return [];
+    return values.map((_, idx, arr) => {
+        const start = Math.max(0, idx - halfWindow);
+        const end = Math.min(arr.length - 1, idx + halfWindow);
+        let sum = 0;
+        for (let i = start; i <= end; i++) {
+            sum += arr[i];
+        }
+        return sum / (end - start + 1);
+    });
+}
+
+function formatLapTime(sec) {
+    const safeSec = Math.max(0, sec || 0);
+    const m = Math.floor(safeSec / 60);
+    const s = safeSec % 60;
+    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+}
+
+function formatPace(secPerKm) {
+    if (!isFinite(secPerKm) || secPerKm <= 0) return "--'--\"";
+    const totalSec = Math.round(secPerKm);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}'${s.toString().padStart(2, '0')}"`;
+}
+
+function processFullRunGPX(xml) {
+    const pts = xml.getElementsByTagName('trkpt');
+    if (pts.length === 0) {
+        alert("GPXデータが見つかりません。");
+        return;
+    }
+
+    let firstRawTime = 0;
+    let totalDistM = 0;
+    let lastValidEle = null;
+
+    const run = {
+        coords: [],
+        timesSec: [],
+        speeds: [],
+        elevs: [],
+        dists: []
+    };
+
+    for (let i = 0; i < pts.length; i++) {
+        const lat = parseFloat(pts[i].getAttribute('lat'));
+        const lon = parseFloat(pts[i].getAttribute('lon'));
+        if (isNaN(lat) || isNaN(lon)) continue;
+
+        const timeStr = pts[i].getElementsByTagName('time')[0]?.textContent;
+        const rawTime = timeStr ? new Date(timeStr).getTime() : (firstRawTime + i * 1000);
+        if (run.coords.length === 0) firstRawTime = rawTime;
+        const elapsedSec = Math.max(0, (rawTime - firstRawTime) / 1000);
+
+        const eleNode = pts[i].getElementsByTagName('ele')[0];
+        let eleVal = eleNode ? parseFloat(eleNode.textContent) : NaN;
+        if (!isNaN(eleVal) && isFinite(eleVal)) {
+            lastValidEle = eleVal;
+        } else if (lastValidEle !== null) {
+            eleVal = lastValidEle;
+        } else {
+            eleVal = 0;
+        }
+
+        let rawSpeedMps = NaN;
+        const ext = pts[i].getElementsByTagName('extensions')[0];
+        if (ext) {
+            const spNode = ext.getElementsByTagName('speed')[0];
+            if (spNode) rawSpeedMps = parseFloat(spNode.textContent);
+        }
+
+        let spdKmh = 0;
+        if (run.coords.length > 0) {
+            const prevIdx = run.coords.length - 1;
+            const prevCoord = run.coords[prevIdx];
+            const prevTimeSec = run.timesSec[prevIdx];
+            const stepM = calcDistanceMeters(prevCoord[0], prevCoord[1], lat, lon);
+
+            if (stepM >= 0.3 && stepM < 200) {
+                totalDistM += stepM;
+            }
+            if (!isNaN(rawSpeedMps) && rawSpeedMps >= 0) {
+                spdKmh = rawSpeedMps * 3.6;
+            } else {
+                const dtSec = Math.max(0.05, elapsedSec - prevTimeSec);
+                spdKmh = (stepM / dtSec) * 3.6;
+            }
+        } else {
+            spdKmh = (!isNaN(rawSpeedMps) && rawSpeedMps >= 0) ? rawSpeedMps * 3.6 : 0;
+        }
+
+        run.coords.push([lat, lon]);
+        run.timesSec.push(elapsedSec);
+        run.speeds.push(spdKmh);
+        run.elevs.push(eleVal);
+        run.dists.push(totalDistM);
+    }
+
+    if (run.coords.length === 0) return;
+
+    // 標高を5点移動平均（前後2点ずつ）で平滑化
+    run.elevs = smoothMovingAverage(run.elevs, 2);
+    fullRunData = run;
+
+    // 1本の走行データから距離セクター（L1, L2...）を算出
+    distanceSectors = [];
+    let lapNo = 1;
+    let nextTargetDistM = gpxLapIntervalM;
+    let segStartIdx = 0;
+    let segStartTimeSec = 0;
+    let segStartDistM = 0;
+
+    for (let i = 1; i < run.coords.length; i++) {
+        const prevDist = run.dists[i - 1];
+        const curDist = run.dists[i];
+        const segStep = curDist - prevDist;
+
+        while (segStep > 0 && curDist >= nextTargetDistM) {
+            const ratio = Math.max(0, Math.min(1, (nextTargetDistM - prevDist) / segStep));
+            const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * ratio;
+            const interpLat = run.coords[i - 1][0] + (run.coords[i][0] - run.coords[i - 1][0]) * ratio;
+            const interpLon = run.coords[i - 1][1] + (run.coords[i][1] - run.coords[i - 1][1]) * ratio;
+
+            const lapSec = Math.max(0.001, interpSec - segStartTimeSec);
+            const segDist = Math.max(1, nextTargetDistM - segStartDistM);
+            const sliceSpeeds = run.speeds.slice(segStartIdx, i + 1);
+            const sliceElevs = run.elevs.slice(segStartIdx, i + 1);
+
+            distanceSectors.push({
+                lapNo,
+                targetDistM: nextTargetDistM,
+                segDistanceM: Math.round(segDist),
+                splitSec: interpSec,
+                durationSec: lapSec,
+                paceSecPerKm: lapSec / Math.max(0.001, segDist / 1000),
+                maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
+                minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
+                maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
+                endCoord: [interpLat, interpLon],
+                frameIndex: i
+            });
+
+            lapNo++;
+            nextTargetDistM += gpxLapIntervalM;
+            segStartIdx = i;
+            segStartTimeSec = interpSec;
+            segStartDistM = curDist;
+        }
+    }
+
+    // ゴールまでの残余区間（最終セクター）
+    const lastIdx = run.coords.length - 1;
+    const finalElapsedSec = run.timesSec[lastIdx];
+    const finalDistM = run.dists[lastIdx];
+    if (finalDistM > segStartDistM) {
+        const remDist = Math.max(1, finalDistM - segStartDistM);
+        const remSec = Math.max(0.001, finalElapsedSec - segStartTimeSec);
+        const sliceSpeeds = run.speeds.slice(segStartIdx, lastIdx + 1);
+        const sliceElevs = run.elevs.slice(segStartIdx, lastIdx + 1);
+
+        distanceSectors.push({
+            lapNo,
+            targetDistM: Math.round(finalDistM),
+            segDistanceM: Math.round(remDist),
+            splitSec: finalElapsedSec,
+            durationSec: remSec,
+            paceSecPerKm: remSec / Math.max(0.001, remDist / 1000),
+            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
+            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
+            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
+            endCoord: run.coords[lastIdx],
+            frameIndex: lastIdx
+        });
+    }
+}
+
+function renderSectorList() {
+    const c = document.getElementById('lap-list-content');
+    const bestBox = document.getElementById('best-sector-summary');
+    const slowBox = document.getElementById('slow-sector-summary');
+    if (!c) return;
+
+    if (distanceSectors.length === 0) {
+        bestBox.innerText = "-";
+        slowBox.innerText = "-";
+        c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">セクターデータがありません</div>`;
+        return;
+    }
+
+    let bestSec = distanceSectors[0];
+    let slowSec = distanceSectors[0];
+    distanceSectors.forEach(sec => {
+        if (sec.paceSecPerKm < bestSec.paceSecPerKm) bestSec = sec;
+        if (sec.paceSecPerKm > slowSec.paceSecPerKm) slowSec = sec;
+    });
+
+    bestBox.innerHTML = `L${bestSec.lapNo} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red); font-weight:bold;">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
+    slowBox.innerHTML = `L${slowSec.lapNo} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue); font-weight:bold;">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
+
+    const globalMaxS = Math.max(...distanceSectors.map(s => s.maxSpeed));
+
+    c.innerHTML = `<div class="lap-row list-header"><span>LAP</span><span>DIST</span><span>SPLIT</span><span>LAP TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span></div>`;
+
+    distanceSectors.forEach((sec) => {
+        const isBest = (sec.lapNo === bestSec.lapNo);
+        const isSlow = (sec.lapNo === slowSec.lapNo && distanceSectors.length > 1);
+        const row = document.createElement('div');
+        row.className = `lap-row ${isBest ? 'row-best' : ''} ${isSlow ? 'row-slow' : ''}`;
+
+        row.innerHTML = `
+            <span>L${sec.lapNo}</span>
+            <span>${sec.targetDistM}m</span>
+            <span>${formatLapTime(sec.splitSec)}</span>
+            <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatLapTime(sec.durationSec)}</span>
+            <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatPace(sec.paceSecPerKm)}</span>
+            <span class="${sec.maxSpeed >= globalMaxS && sec.maxSpeed > 0 ? 'stat-best' : ''}">${Math.round(sec.maxSpeed)}</span>
+            <span>${Math.round(sec.minEle)}-${Math.round(sec.maxEle)}m</span>
+        `;
+
+        row.onclick = () => {
+            isPlaying = false;
+            document.getElementById('playBtn').innerText = "PLAY";
+            currentFrame = sec.frameIndex;
+            document.getElementById('seek-bar').value = currentFrame;
+            document.getElementById('lap-list-overlay').style.display = 'none';
+            updateFrame();
+        };
+
+        c.appendChild(row);
+    });
+}
+
+function closeLapList() {
+    document.getElementById('lap-list-overlay').style.display = 'none';
+    updateFrame();
+}
+
+function updateUI() {
+    if (!fullRunData || fullRunData.coords.length === 0) return;
+
+    const seekBar = document.getElementById('seek-bar');
+    if (seekBar) {
+        seekBar.max = Math.max(0, fullRunData.speeds.length - 1);
+        if (!isPlaying) {
+            currentFrame = 0;
+            seekBar.value = 0;
+        }
+    }
+
+    if (window.pathLayer) {
+        map.removeLayer(window.pathLayer);
+    }
+
+    const g = L.featureGroup();
+    const movingSpeeds = fullRunData.speeds.filter(s => s > 2);
+    const maxS = Math.max(...fullRunData.speeds, 1);
+    const minS = movingSpeeds.length > 0 ? Math.min(...movingSpeeds) : 0;
+    const range = (maxS - minS) || 1;
+
+    for (let i = 1; i < fullRunData.coords.length; i++) {
+        let ratio = Math.max(0, Math.min(1, (fullRunData.speeds[i] - minS) / range));
+        let r = 0, g_val = 0, b = 0;
+        if (ratio < 0.5) {
+            g_val = Math.floor(255 * (ratio * 2));
+            b = Math.floor(255 * (1 - ratio * 2));
+        } else {
+            r = Math.floor(255 * ((ratio - 0.5) * 2));
+            g_val = Math.floor(255 * (1 - (ratio - 0.5) * 2));
+        }
+
+        L.polyline([
+            [fullRunData.coords[i - 1][0] + latOffset, fullRunData.coords[i - 1][1] + lonOffset],
+            [fullRunData.coords[i][0] + latOffset, fullRunData.coords[i][1] + lonOffset]
+        ], {
+            color: `rgb(${r}, ${g_val}, ${b})`,
+            weight: 4,
+            opacity: 0.95
+        }).addTo(g);
+    }
+
+    distanceSectors.forEach((sec) => {
+        if (!sec.endCoord) return;
+        const latlng = [sec.endCoord[0] + latOffset, sec.endCoord[1] + lonOffset];
+        const pin = L.circleMarker(latlng, {
+            radius: 5,
+            color: '#000',
+            weight: 1.5,
+            fillColor: '#ffff00',
+            fillOpacity: 0.95
+        });
+        pin.bindTooltip(`L${sec.lapNo} (${sec.targetDistM}m)`, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -4],
+            className: 'sector-pin-label'
+        });
+        pin.addTo(g);
+    });
+
+    window.pathLayer = g.addTo(map);
+
+    if (!window.isMapInit) {
+        const bounds = g.getBounds();
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [30, 30] });
+            window.isMapInit = true;
+        }
+    }
+
+    createCharts();
+    updateFrame();
+}
+
+function createCharts() {
+    if (!fullRunData) return;
+
+    const datasets = [
+        {
+            label: 'SPD (km/h)',
+            data: fullRunData.speeds,
+            borderColor: '#33ccff',
+            pointRadius: 0,
+            yAxisID: 'y',
+            borderWidth: 2.5
+        },
+        {
+            label: 'ELEV (m)',
+            data: fullRunData.elevs,
+            borderColor: '#33ff77',
+            backgroundColor: 'rgba(51, 255, 119, 0.14)',
+            fill: true,
+            pointRadius: 0,
+            yAxisID: 'y1',
+            borderWidth: 2
+        }
+    ];
+
+    if (mainChart) mainChart.destroy();
+    const annotations = { now: { type: 'line', xMin: currentFrame, xMax: currentFrame, borderColor: '#fff', borderWidth: 2 } };
+    if (idxA !== null) annotations.lineA = { type: 'line', xMin: idxA, xMax: idxA, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
+    if (idxB !== null) annotations.lineB = { type: 'line', xMin: idxB, xMax: idxB, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
+
+    mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
+        type: 'line',
+        data: { labels: fullRunData.dists.map(d => `${Math.round(d)}m`), datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: { display: false },
+                y: {
+                    position: 'left',
+                    min: 0,
+                    title: { display: true, text: 'SPD (km/h)', color: '#33ccff', font: { size: 10 } },
+                    ticks: { color: '#33ccff', font: { size: 10 } },
+                    grid: { color: '#222' }
+                },
+                y1: {
+                    position: 'right',
+                    title: { display: true, text: 'ELEV (m)', color: '#33ff77', font: { size: 10 } },
+                    ticks: { color: '#33ff77', font: { size: 10 } },
+                    grid: { drawOnChartArea: false }
+                }
+            },
+            plugins: {
+                legend: { display: true, labels: { color: '#fff', boxWidth: 12, font: { size: 10 } } },
+                annotation: { annotations }
+            }
+        }
+    });
+}
+
+function updateFrame() {
+    if (!fullRunData || fullRunData.coords.length === 0) return;
+    const idx = Math.min(currentFrame, fullRunData.speeds.length - 1);
+    markerP.setLatLng([fullRunData.coords[idx][0] + latOffset, fullRunData.coords[idx][1] + lonOffset]);
+
+    document.getElementById('p-time').innerText = formatLapTime(fullRunData.timesSec[idx]);
+    document.getElementById('p-spd').innerText = `${Math.round(fullRunData.speeds[idx])}`;
+    document.getElementById('p-ele').innerText = `${fullRunData.elevs[idx].toFixed(1)}m`;
+    document.getElementById('p-dist').innerText = `${Math.round(fullRunData.dists[idx])}m`;
+
+    if (idxA !== null && idxB !== null) {
+        const aIdx = Math.min(idxA, fullRunData.timesSec.length - 1);
+        const bIdx = Math.min(idxB, fullRunData.timesSec.length - 1);
+        document.getElementById('p-ab').innerText = Math.abs(fullRunData.timesSec[bIdx] - fullRunData.timesSec[aIdx]).toFixed(2) + "s";
+    }
+
+    if (mainChart) {
+        mainChart.options.plugins.annotation.annotations.now.xMin = idx;
+        mainChart.options.plugins.annotation.annotations.now.xMax = idx;
+        mainChart.update('resize');
+    }
+}
+
+document.getElementById('btnSetA').onclick = () => { idxA = currentFrame; createCharts(); updateFrame(); };
+document.getElementById('btnSetB').onclick = () => { idxB = currentFrame; createCharts(); updateFrame(); };
+document.getElementById('openListBtn').onclick = () => {
+    renderSectorList();
+    document.getElementById('lap-list-overlay').style.display = 'flex';
+};
+
+document.getElementById('playBtn').onclick = function() {
+    if (!fullRunData || fullRunData.coords.length === 0) return;
+    isPlaying = !isPlaying;
+    this.innerText = isPlaying ? "PAUSE" : "PLAY";
+    if (isPlaying) animate();
+};
+
+function animate() {
+    if (!isPlaying || !fullRunData) return;
+    if (currentFrame >= fullRunData.speeds.length - 1) {
+        isPlaying = false;
+        document.getElementById('playBtn').innerText = "PLAY";
+        return;
+    }
+    currentFrame++;
+    document.getElementById('seek-bar').value = currentFrame;
+    updateFrame();
+    requestAnimationFrame(animate);
+}
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+            .then(reg => console.log('SW Registered!', reg))
+            .catch(err => console.log('SW Register Failed!', err));
+    });
+}
+</script>
+
+</body>
+</html>
