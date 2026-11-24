@@ -135,9 +135,11 @@ let isFrozen = false;
 let freezeDisplayTime = "00:00.000";
 let freezeUntil = 0;
 
-let lines = { startLine: null, goalLine: null };
+let courseMode = 'marathon'; // 'marathon' | 'circuit'
+let lines = { startLine: null, goalLine: null, lapLine: null };
 let validStartDirection = null;
 let startTriggered = false;
+let lastLapCrossTime = 0;
 
 // 距離ラップ管理用
 let lapIntervalM = 1000;
@@ -147,6 +149,7 @@ let nextLapDistanceM = 1000;
 let watchId = null;
 let lapCounter = 0;
 const startCooldownMs = 5000;
+const lapCooldownMs = 5000;
 
 // 地図・軌跡管理用
 let map = null;
@@ -197,6 +200,16 @@ function initMap() {
             [[lines.goalLine.p1.lat, lines.goalLine.p1.lon], [lines.goalLine.p2.lat, lines.goalLine.p2.lon]],
             { color: '#28a745', weight: 4 }
         ).addTo(map);
+    }
+    if (lines.lapLine) {
+        L.polyline(
+            [[lines.lapLine.p1.lat, lines.lapLine.p1.lon], [lines.lapLine.p2.lat, lines.lapLine.p2.lon]],
+            { color: '#9c27b0', weight: 4 }
+        ).addTo(map);
+        if (!mapCenteredOnce) {
+            map.setView([lines.lapLine.p1.lat, lines.lapLine.p1.lon], 17);
+            mapCenteredOnce = true;
+        }
     }
 
     setTimeout(syncMapAspectRatio, 150);
@@ -305,9 +318,10 @@ function updateLapList() {
     const best = Math.min(...lapRecords.map(r => r.lapMs));
     document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(best)}`;
 
+    const prefix = (courseMode === 'circuit') ? 'L' : 'S';
     document.getElementById('lap').innerHTML = lapRecords.map(r => `
         <div class="lap-row ${r.lapMs === best ? 'best-lap' : ''}">
-            <span>S${r.no}(${r.targetDistM}m)</span>
+            <span>${prefix}${r.no}(${r.targetDistM}m)</span>
             <span>${timeFormat(r.lapMs)}</span>
         </div>`).join('');
 }
@@ -331,78 +345,141 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
     const cur = { lat: currLat, lon: currLon, time: now };
 
     if (swState === 1) {
-        if (lines.startLine && lastPos && !startTriggered) {
-            const hitStart = getIntersection(lastPos, cur, lines.startLine);
-            if (hitStart && (hitStart.time - startTime > startCooldownMs)) {
-                if (validStartDirection === null) validStartDirection = hitStart.dir;
-                if (hitStart.dir === validStartDirection) {
-                    startTriggered = true;
-                    startLineCrossTime = hitStart.time;
-                    currentLapStartTime = hitStart.time;
-                    totalDistanceM = 0;
-                    sectorBaseDistanceM = 0;
-                    nextLapDistanceM = lapIntervalM;
+        if (courseMode === 'circuit' && lines.lapLine) {
+            // 周回コースモード：1本の周回ライン通過でスタート＆ラップ計測
+            const canAccumulate = startTriggered;
+            if (canAccumulate && lastPos) {
+                const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
+                if (stepM >= 0.5 && stepM < 150) {
+                    const prevTime = lastPos.time;
+                    totalDistanceM += stepM;
+
+                    if (rawSpeedMps !== null && rawSpeedMps > 0) {
+                        currentSpeedKmh = rawSpeedMps * 3.6;
+                    } else {
+                        const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
+                        currentSpeedKmh = (stepM / dtSec) * 3.6;
+                    }
+                    if (currentSpeedKmh > maxSpeedInLap) {
+                        maxSpeedInLap = Math.round(currentSpeedKmh);
+                    }
+
+                    let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
+                        ? rawAltitudeM
+                        : null;
+                    if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
+                        validEle = lastAltitudeM;
+                    }
+                    if (validEle !== null) {
+                        lastAltitudeM = validEle;
+                    }
+
+                    currentLapPoints.push({
+                        lat: cur.lat,
+                        lon: cur.lon,
+                        ele: validEle,
+                        time: new Date(cur.time).toISOString(),
+                        speed: currentSpeedKmh,
+                        distM: Math.round(totalDistanceM)
+                    });
                 }
             }
-        }
 
-        const canAccumulate = !lines.startLine || startTriggered;
-        if (canAccumulate && lastPos) {
-            const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
-            if (stepM >= 0.5 && stepM < 150) {
-                const prevTotalM = totalDistanceM;
-                const prevTime = lastPos.time;
-                totalDistanceM += stepM;
-
-                if (rawSpeedMps !== null && rawSpeedMps > 0) {
-                    currentSpeedKmh = rawSpeedMps * 3.6;
-                } else {
-                    const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
-                    currentSpeedKmh = (stepM / dtSec) * 3.6;
-                }
-                if (currentSpeedKmh > maxSpeedInLap) {
-                    maxSpeedInLap = Math.round(currentSpeedKmh);
-                }
-
-                let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
-                    ? rawAltitudeM
-                    : null;
-
-                if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
-                    validEle = lastAltitudeM;
-                }
-                if (validEle !== null) {
-                    lastAltitudeM = validEle;
-                }
-
-                currentLapPoints.push({
-                    lat: cur.lat,
-                    lon: cur.lon,
-                    ele: validEle,
-                    time: new Date(cur.time).toISOString(),
-                    speed: currentSpeedKmh,
-                    distM: Math.round(totalDistanceM)
-                });
-
-                while (totalDistanceM >= nextLapDistanceM) {
-                    const ratio = (nextLapDistanceM - prevTotalM) / stepM;
-                    const clampedRatio = Math.max(0, Math.min(1, ratio));
-                    const interpTime = prevTime + (cur.time - prevTime) * clampedRatio;
-
-                    recordDistanceLap(interpTime, nextLapDistanceM, lapIntervalM, false);
-                    nextLapDistanceM += lapIntervalM;
+            if (lastPos) {
+                const hitLap = getIntersection(lastPos, cur, lines.lapLine);
+                if (hitLap) {
+                    if (!startTriggered) {
+                        if (hitLap.time - startTime > startCooldownMs) {
+                            validStartDirection = hitLap.dir;
+                            startTriggered = true;
+                            startLineCrossTime = hitLap.time;
+                            currentLapStartTime = hitLap.time;
+                            lastLapCrossTime = hitLap.time;
+                            totalDistanceM = 0;
+                            sectorBaseDistanceM = 0;
+                        }
+                    } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
+                        const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
+                        recordDistanceLap(hitLap.time, Math.round(totalDistanceM), segDist, false);
+                        lastLapCrossTime = hitLap.time;
+                    }
                 }
             }
-        }
+        } else {
+            // マラソン/区間モード
+            if (lines.startLine && lastPos && !startTriggered) {
+                const hitStart = getIntersection(lastPos, cur, lines.startLine);
+                if (hitStart && (hitStart.time - startTime > startCooldownMs)) {
+                    if (validStartDirection === null) validStartDirection = hitStart.dir;
+                    if (hitStart.dir === validStartDirection) {
+                        startTriggered = true;
+                        startLineCrossTime = hitStart.time;
+                        currentLapStartTime = hitStart.time;
+                        totalDistanceM = 0;
+                        sectorBaseDistanceM = 0;
+                        nextLapDistanceM = lapIntervalM;
+                    }
+                }
+            }
 
-        if (lines.goalLine && lastPos && (!lines.startLine || startTriggered)) {
-            const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
-            if (hitGoal) {
-                const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
-                recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
-                swState = 2;
-                document.getElementById('startBtn').classList.remove('active');
-                document.getElementById('gpxBtn').style.display = 'block';
+            const canAccumulate = !lines.startLine || startTriggered;
+            if (canAccumulate && lastPos) {
+                const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
+                if (stepM >= 0.5 && stepM < 150) {
+                    const prevTotalM = totalDistanceM;
+                    const prevTime = lastPos.time;
+                    totalDistanceM += stepM;
+
+                    if (rawSpeedMps !== null && rawSpeedMps > 0) {
+                        currentSpeedKmh = rawSpeedMps * 3.6;
+                    } else {
+                        const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
+                        currentSpeedKmh = (stepM / dtSec) * 3.6;
+                    }
+                    if (currentSpeedKmh > maxSpeedInLap) {
+                        maxSpeedInLap = Math.round(currentSpeedKmh);
+                    }
+
+                    let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
+                        ? rawAltitudeM
+                        : null;
+
+                    if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
+                        validEle = lastAltitudeM;
+                    }
+                    if (validEle !== null) {
+                        lastAltitudeM = validEle;
+                    }
+
+                    currentLapPoints.push({
+                        lat: cur.lat,
+                        lon: cur.lon,
+                        ele: validEle,
+                        time: new Date(cur.time).toISOString(),
+                        speed: currentSpeedKmh,
+                        distM: Math.round(totalDistanceM)
+                    });
+
+                    while (totalDistanceM >= nextLapDistanceM) {
+                        const ratio = (nextLapDistanceM - prevTotalM) / stepM;
+                        const clampedRatio = Math.max(0, Math.min(1, ratio));
+                        const interpTime = prevTime + (cur.time - prevTime) * clampedRatio;
+
+                        recordDistanceLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                        nextLapDistanceM += lapIntervalM;
+                    }
+                }
+            }
+
+            if (lines.goalLine && lastPos && (!lines.startLine || startTriggered)) {
+                const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
+                if (hitGoal) {
+                    const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
+                    recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
+                    swState = 2;
+                    document.getElementById('startBtn').classList.remove('active');
+                    document.getElementById('gpxBtn').style.display = 'block';
+                }
             }
         }
     }
@@ -466,7 +543,8 @@ function mainLoop() {
         document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
 
         const stLapEl = document.getElementById('stline-lap');
-        if (lines.startLine) {
+        const hasStartLine = (courseMode === 'circuit') ? Boolean(lines.lapLine) : Boolean(lines.startLine);
+        if (hasStartLine) {
             if (startTriggered && startLineCrossTime !== null) {
                 stLapEl.textContent = timeFormat(now - startLineCrossTime);
             } else {
@@ -496,12 +574,14 @@ function mainLoop() {
 
 document.getElementById('startBtn').onclick = function() {
     if (swState !== 1) {
+        courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
         lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
         document.getElementById('debug-intv').textContent = lapIntervalM;
 
         swState = 1;
         startTime = Date.now();
         startLineCrossTime = null;
+        lastLapCrossTime = 0;
         currentLapStartTime = startTime;
         lapRecords = [];
         lapCounter = 0;
@@ -512,7 +592,7 @@ document.getElementById('startBtn').onclick = function() {
         currentLapPoints = [];
         lastAltitudeM = null;
         validStartDirection = null;
-        startTriggered = !lines.startLine;
+        startTriggered = (courseMode === 'circuit') ? !lines.lapLine : !lines.startLine;
 
         trackLatLngs = [];
         if (trackPolyline) trackPolyline.setLatLngs([]);
@@ -542,12 +622,13 @@ document.getElementById('historyBtn').onclick = () => {
         return;
     }
     const bT = Math.min(...lapRecords.map(r => r.lapMs));
+    const prefix = (courseMode === 'circuit') ? 'L' : 'S';
     document.getElementById('history-body').innerHTML = lapRecords.map(r => {
         const isBest = (r.lapMs === bT);
         const timeStyle = isBest ? 'color:var(--hrc-red); font-weight:bold;' : '';
         return `
         <tr>
-            <td>S${r.no}</td>
+            <td>${prefix}${r.no}</td>
             <td>${r.targetDistM}m</td>
             <td>${timeFormat(r.splitMs)}</td>
             <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
@@ -587,7 +668,30 @@ document.getElementById('gpxBtn').onclick = async function() {
         }
     });
 
-    gpx += `\n</trkseg>\n</trk>\n</gpx>`;
+    gpx += `\n</trkseg>\n</trk>`;
+
+    if (lines.startLine) {
+        gpx += `\n<trk><name>START_LINE</name><trkseg>
+<trkpt lat="${lines.startLine.p1.lat}" lon="${lines.startLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.startLine.p2.lat}" lon="${lines.startLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    if (lines.goalLine) {
+        gpx += `\n<trk><name>GOAL_LINE</name><trkseg>
+<trkpt lat="${lines.goalLine.p1.lat}" lon="${lines.goalLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.goalLine.p2.lat}" lon="${lines.goalLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    if (lines.lapLine) {
+        gpx += `\n<trk><name>LAP_LINE</name><trkseg>
+<trkpt lat="${lines.lapLine.p1.lat}" lon="${lines.lapLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.lapLine.p2.lat}" lon="${lines.lapLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    gpx += `\n</gpx>`;
 
     const filename = `klap_marathon_${new Date().getTime()}.gpx`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
@@ -623,15 +727,19 @@ window.addEventListener('resize', syncMapAspectRatio);
 window.addEventListener('orientationchange', () => setTimeout(syncMapAspectRatio, 200));
 
 window.onload = () => {
+    courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
     lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
     document.getElementById('debug-intv').textContent = lapIntervalM;
 
-    ['startLine', 'goalLine'].forEach(key => {
-        const lat = localStorage.getItem(key + 'P1Lat');
-        if (lat) {
+    ['startLine', 'goalLine', 'lapLine'].forEach(key => {
+        const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
+        const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
+        const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
+        const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
+        if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
             lines[key] = {
-                p1: { lat: parseFloat(lat), lon: parseFloat(localStorage.getItem(key + 'P1Lon')) },
-                p2: { lat: parseFloat(localStorage.getItem(key + 'P2Lat')), lon: parseFloat(localStorage.getItem(key + 'P2Lon')) }
+                p1: { lat: p1Lat, lon: p1Lon },
+                p2: { lat: p2Lat, lon: p2Lon }
             };
         }
     });
