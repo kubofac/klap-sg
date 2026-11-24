@@ -81,11 +81,30 @@
         .leaflet-tooltip.sector-pin-label::before { display: none; }
 
         #lap-list-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 10000; flex-direction: column; padding: 15px; box-sizing: border-box; }
+        .total-run-banner {
+            background: #1a1a1a;
+            border: 1px solid var(--hrc-yellow);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .total-run-time {
+            color: var(--hrc-yellow);
+            font-weight: bold;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+        }
         .sector-summary-bar {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
-            margin: 10px 0;
+            margin: 8px 0 10px;
             font-size: 12px;
         }
         .summary-card {
@@ -98,7 +117,7 @@
         .summary-card.slow-card { border-color: var(--hrc-blue); }
 
         #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
-        .lap-row { display: grid; grid-template-columns: 48px 72px 1fr 1fr 78px 54px 76px; gap: 4px; padding: 11px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
+        .lap-row { display: grid; grid-template-columns: 44px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
         .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
         .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
         .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
@@ -161,6 +180,13 @@
 
 <div id="lap-list-overlay">
     <h3 style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
+    <div class="total-run-banner">
+        <div>
+            <span style="color:#aaa; font-size:11px;">START → GOAL TOTAL TIME</span><br>
+            <span class="total-run-time" id="start-goal-time">-</span>
+        </div>
+        <div id="start-goal-meta" style="color:#ccc; font-size:12px; text-align:right;">-</div>
+    </div>
     <div class="sector-summary-bar">
         <div class="summary-card best-card">
             <div style="color:var(--hrc-red); font-weight:bold;">BEST SECTOR</div>
@@ -181,6 +207,7 @@ let map, markerP, mainChart, fullRunData = null, distanceSectors = [];
 let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
 let latOffset = 0, lonOffset = 0;
 let gpxLapIntervalM = 1000;
+const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
 
 window.onload = () => {
     map = L.map('map', {
@@ -302,7 +329,7 @@ function calcDistanceMeters(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function smoothMovingAverage(values, halfWindow = 2) {
+function smoothMovingAverage(values, halfWindow = SMOOTH_HALF_WINDOW) {
     if (!Array.isArray(values) || values.length === 0) return [];
     return values.map((_, idx, arr) => {
         const start = Math.max(0, idx - halfWindow);
@@ -346,7 +373,9 @@ function processFullRunGPX(xml) {
         timesSec: [],
         speeds: [],
         elevs: [],
-        dists: []
+        dists: [],
+        totalTimeSec: 0,
+        totalDistM: 0
     };
 
     for (let i = 0; i < pts.length; i++) {
@@ -405,8 +434,11 @@ function processFullRunGPX(xml) {
 
     if (run.coords.length === 0) return;
 
-    // 標高を5点移動平均（前後2点ずつ）で平滑化
-    run.elevs = smoothMovingAverage(run.elevs, 2);
+    // 速度・標高を移動平均で平滑化
+    run.speeds = smoothMovingAverage(run.speeds, SMOOTH_HALF_WINDOW);
+    run.elevs = smoothMovingAverage(run.elevs, SMOOTH_HALF_WINDOW);
+    run.totalTimeSec = run.timesSec[run.timesSec.length - 1];
+    run.totalDistM = run.dists[run.dists.length - 1];
     fullRunData = run;
 
     // 1本の走行データから距離セクター（L1, L2...）を算出
@@ -438,6 +470,7 @@ function processFullRunGPX(xml) {
                 targetDistM: nextTargetDistM,
                 segDistanceM: Math.round(segDist),
                 splitSec: interpSec,
+                toGoalSec: Math.max(0, run.totalTimeSec - interpSec),
                 durationSec: lapSec,
                 paceSecPerKm: lapSec / Math.max(0.001, segDist / 1000),
                 maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
@@ -470,6 +503,7 @@ function processFullRunGPX(xml) {
             targetDistM: Math.round(finalDistM),
             segDistanceM: Math.round(remDist),
             splitSec: finalElapsedSec,
+            toGoalSec: 0,
             durationSec: remSec,
             paceSecPerKm: remSec / Math.max(0.001, remDist / 1000),
             maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
@@ -485,14 +519,24 @@ function renderSectorList() {
     const c = document.getElementById('lap-list-content');
     const bestBox = document.getElementById('best-sector-summary');
     const slowBox = document.getElementById('slow-sector-summary');
+    const totalTimeEl = document.getElementById('start-goal-time');
+    const totalMetaEl = document.getElementById('start-goal-meta');
     if (!c) return;
 
-    if (distanceSectors.length === 0) {
+    if (!fullRunData || distanceSectors.length === 0) {
+        totalTimeEl.innerText = "-";
+        totalMetaEl.innerText = "-";
         bestBox.innerText = "-";
         slowBox.innerText = "-";
         c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">セクターデータがありません</div>`;
         return;
     }
+
+    const totalSec = fullRunData.totalTimeSec || 0;
+    const totalDist = fullRunData.totalDistM || 0;
+    const avgPace = totalDist > 0 ? totalSec / (totalDist / 1000) : 0;
+    totalTimeEl.innerText = formatLapTime(totalSec);
+    totalMetaEl.innerHTML = `DIST: <b>${Math.round(totalDist)}m</b> / AVG PACE: <b>${formatPace(avgPace)}/km</b>`;
 
     let bestSec = distanceSectors[0];
     let slowSec = distanceSectors[0];
@@ -506,7 +550,7 @@ function renderSectorList() {
 
     const globalMaxS = Math.max(...distanceSectors.map(s => s.maxSpeed));
 
-    c.innerHTML = `<div class="lap-row list-header"><span>LAP</span><span>DIST</span><span>SPLIT</span><span>LAP TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span></div>`;
+    c.innerHTML = `<div class="lap-row list-header"><span>LAP</span><span>DIST</span><span>SPLIT</span><span>LAP TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span><span>TO GOAL</span></div>`;
 
     distanceSectors.forEach((sec) => {
         const isBest = (sec.lapNo === bestSec.lapNo);
@@ -522,6 +566,7 @@ function renderSectorList() {
             <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatPace(sec.paceSecPerKm)}</span>
             <span class="${sec.maxSpeed >= globalMaxS && sec.maxSpeed > 0 ? 'stat-best' : ''}">${Math.round(sec.maxSpeed)}</span>
             <span>${Math.round(sec.minEle)}-${Math.round(sec.maxEle)}m</span>
+            <span style="color:var(--hrc-yellow);">${formatLapTime(sec.toGoalSec)}</span>
         `;
 
         row.onclick = () => {
@@ -627,6 +672,7 @@ function createCharts() {
             data: fullRunData.speeds,
             borderColor: '#33ccff',
             pointRadius: 0,
+            tension: 0.35,
             yAxisID: 'y',
             borderWidth: 2.5
         },
@@ -637,6 +683,7 @@ function createCharts() {
             backgroundColor: 'rgba(51, 255, 119, 0.14)',
             fill: true,
             pointRadius: 0,
+            tension: 0.35,
             yAxisID: 'y1',
             borderWidth: 2
         }
