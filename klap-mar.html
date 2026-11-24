@@ -499,7 +499,25 @@ document.getElementById('gpxBtn').onclick = async function() {
         }
     });
 
-    gpx += `\n</trkseg>\n</trk>\n</gpx>`;
+   gpx += `\n</trkseg>\n</trk>`;
+
+    // スタートラインが設定されていればGPXに線として追加
+    if (lines.startLine) {
+        gpx += `\n<trk><name>START_LINE</name><trkseg>
+<trkpt lat="${lines.startLine.p1.lat}" lon="${lines.startLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.startLine.p2.lat}" lon="${lines.startLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    // ゴールラインが設定されていればGPXに線として追加
+    if (lines.goalLine) {
+        gpx += `\n<trk><name>GOAL_LINE</name><trkseg>
+<trkpt lat="${lines.goalLine.p1.lat}" lon="${lines.goalLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.goalLine.p2.lat}" lon="${lines.goalLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    gpx += `\n</gpx>`;
 
     const filename = `klap_marathon_${new Date().getTime()}.gpx`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
