@@ -207,6 +207,7 @@ let map, markerP, mainChart, fullRunData = null, distanceSectors = [];
 let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
 let latOffset = 0, lonOffset = 0;
 let gpxLapIntervalM = 1000;
+let gpxLines = { startLine: null, goalLine: null, lapLine: null };
 const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
 
 window.onload = () => {
@@ -291,6 +292,7 @@ document.getElementById('fileInput').onchange = e => {
     reader.onload = evt => {
         fullRunData = null;
         distanceSectors = [];
+        gpxLines = { startLine: null, goalLine: null, lapLine: null };
         window.isMapInit = false;
         currentFrame = 0;
         idxA = null;
@@ -358,7 +360,33 @@ function formatPace(secPerKm) {
 }
 
 function processFullRunGPX(xml) {
-    const pts = xml.getElementsByTagName('trkpt');
+    gpxLines = { startLine: null, goalLine: null, lapLine: null };
+    const trks = xml.getElementsByTagName('trk');
+    let pts = [];
+
+    for (let t = 0; t < trks.length; t++) {
+        const nameNode = trks[t].getElementsByTagName('name')[0];
+        const trkName = (nameNode ? nameNode.textContent : '').trim().toUpperCase();
+        const trkPts = trks[t].getElementsByTagName('trkpt');
+
+        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'LAP_LINE') {
+            if (trkPts.length >= 2) {
+                const p1Lat = parseFloat(trkPts[0].getAttribute('lat'));
+                const p1Lon = parseFloat(trkPts[0].getAttribute('lon'));
+                const p2Lat = parseFloat(trkPts[1].getAttribute('lat'));
+                const p2Lon = parseFloat(trkPts[1].getAttribute('lon'));
+                if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
+                    const lineData = { p1: [p1Lat, p1Lon], p2: [p2Lat, p2Lon] };
+                    if (trkName === 'START_LINE') gpxLines.startLine = lineData;
+                    if (trkName === 'GOAL_LINE') gpxLines.goalLine = lineData;
+                    if (trkName === 'LAP_LINE') gpxLines.lapLine = lineData;
+                }
+            }
+        } else {
+            pts = pts.concat(Array.from(trkPts));
+        }
+    }
+
     if (pts.length === 0) {
         alert("GPXデータが見つかりません。");
         return;
@@ -647,6 +675,28 @@ function updateUI() {
             className: 'sector-pin-label'
         });
         pin.addTo(g);
+    });
+
+    // GPX内のSTART_LINE / GOAL_LINE / LAP_LINEを描画
+    const lineConfigs = [
+        { key: 'startLine', color: '#E4002B', label: 'START' },
+        { key: 'goalLine',  color: '#28a745', label: 'GOAL' },
+        { key: 'lapLine',   color: '#9c27b0', label: 'S/G (LAP)' }
+    ];
+    lineConfigs.forEach(cfg => {
+        const line = gpxLines[cfg.key];
+        if (!line) return;
+        const p1 = [line.p1[0] + latOffset, line.p1[1] + lonOffset];
+        const p2 = [line.p2[0] + latOffset, line.p2[1] + lonOffset];
+        L.polyline([p1, p2], {
+            color: cfg.color,
+            weight: 5,
+            opacity: 0.95
+        }).bindTooltip(cfg.label, {
+            permanent: true,
+            direction: 'center',
+            className: 'sector-pin-label'
+        }).addTo(g);
     });
 
     window.pathLayer = g.addTo(map);
