@@ -35,7 +35,7 @@
         .btn-save-dist { background-color: #1565C0; font-size: 16px; margin-top: 6px; }
         .nav-button { background-color: #004098; color: #fff; font-size: 17px; margin-top: 8px; }
 
-        .result-text { font-size: 13px; font-weight: bold; color: #007bff; margin-bottom: 6px; }
+        .result-text { font-size: 13px; font-weight: bold; color: #007bff; margin-bottom: 6px; line-height: 1.4; }
         #instructionMessage { color: #d9534f; font-weight: bold; font-size: 14px; padding: 0 15px; }
 
         .target-selector {
@@ -87,23 +87,34 @@
         </div>
     </div>
 
-    <!-- 1. 走行モード＆スタート・ゴール/周回ライン設定 -->
+    <!-- 1. 走行モード＆スタート・ゴール・セクター/周回ライン設定 -->
     <div class="control-group">
         <label>1. 走行モードとライン設定（地図上でP1・P2配置）</label>
 
         <div class="target-selector">
-            <label><input type="radio" name="courseMode" value="marathon" checked> マラソン/区間（ST・GOAL）</label>
+            <label><input type="radio" name="courseMode" value="marathon" checked> マラソン/区間（ST・GOAL・SEC）</label>
             <label><input type="radio" name="courseMode" value="circuit"> 周回コース（周回S/Gライン1本）</label>
         </div>
 
-        <div class="target-selector">
-            <label><input type="radio" name="targetLine" value="startLine" checked> スタートライン</label>
-            <label><input type="radio" name="targetLine" value="goalLine"> ゴールライン</label>
-            <label><input type="radio" name="targetLine" value="lapLine"> 周回S/Gライン</label>
-        </div>
+        <label for="targetLineSelect" style="font-size: 13px; color: #333;">設置・編集する対象ラインを選択</label>
+        <select id="targetLineSelect">
+            <option value="startLine">スタートライン（ST）</option>
+            <option value="goalLine">ゴールライン（GOAL）</option>
+            <option value="lapLine">周回S/Gライン（LAP）</option>
+            <option value="sec1Line">関門・セクター 1（SEC 1）</option>
+            <option value="sec2Line">関門・セクター 2（SEC 2）</option>
+            <option value="sec3Line">関門・セクター 3（SEC 3）</option>
+            <option value="sec4Line">関門・セクター 4（SEC 4）</option>
+            <option value="sec5Line">関門・セクター 5（SEC 5）</option>
+            <option value="sec6Line">関門・セクター 6（SEC 6）</option>
+            <option value="sec7Line">関門・セクター 7（SEC 7）</option>
+            <option value="sec8Line">関門・セクター 8（SEC 8）</option>
+            <option value="sec9Line">関門・セクター 9（SEC 9）</option>
+            <option value="sec10Line">関門・セクター 10（SEC 10）</option>
+        </select>
 
         <div id="lineStatusSummary" class="result-text" style="color:#333;">
-            モード: マラソン | ライン状態: ST:-- / GOAL:-- / LAP:--
+            モード: マラソン | ST:-- / GOAL:-- / LAP:--<br>関門セクター: 未設定
         </div>
 
         <button class="btn-decide" id="btnDecideLine">選択中のラインを保存</button>
@@ -132,7 +143,7 @@
 
     <!-- 3. カスタムコースプリセット -->
     <div class="control-group">
-        <label>3. カスタムコースプリセット（モード＋ライン＋ラップ距離）</label>
+        <label>3. カスタムコースプリセット（モード＋全ライン＋ラップ距離）</label>
         <select id="courseSelect" onchange="toggleDeleteButton()">
             <option value="">-- 保存済みコースを選択 --</option>
         </select>
@@ -140,7 +151,7 @@
         <div style="margin-top: 5px; margin-bottom: 12px; padding: 12px; background: #eef7ff; border: 1px solid #bce0ff; border-radius: 8px;">
             <label style="font-weight: bold; font-size: 14px; color: #1565C0; display: block; margin-bottom: 5px;">現在の設定をコース保存</label>
             <div style="display: flex; gap: 8px;">
-                <input type="text" id="newCourseName" placeholder="例：周回コース / 河川敷1km" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="newCourseName" placeholder="例：フルマラソン関門10 / 河川敷1km" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
                 <button onclick="saveNewCustomCourse()" style="width: auto; margin-bottom: 0; padding: 8px 14px; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">追加保存</button>
             </div>
         </div>
@@ -161,7 +172,8 @@
         const AUTH_STORAGE_KEY = "klap_auth_v1";
         const STORAGE_KEY_INTERVAL = "marathon_lap_interval_m";
         const STORAGE_KEY_MODE = "klap_course_mode";
-        const LINE_TYPES = ['startLine', 'goalLine', 'lapLine'];
+        const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
+        const LINE_TYPES = ['startLine', 'goalLine', 'lapLine', ...SECTOR_KEYS];
 
         function checkPassword() {
             const inputVal = document.getElementById('passInput').value.trim();
@@ -189,18 +201,22 @@
 
         let map, p1Marker, p2Marker, gpsCircle;
         let p1Temp = null, p2Temp = null;
-        let activeLines = { startLine: null, goalLine: null, lapLine: null };
+        let activeLines = {};
+        LINE_TYPES.forEach(t => { activeLines[t] = null; });
 
         function getLineLabel(target) {
             if (target === 'startLine') return 'スタートライン';
             if (target === 'goalLine') return 'ゴールライン';
-            return '周回S/Gライン';
+            if (target === 'lapLine') return '周回S/Gライン';
+            const m = target.match(/^sec(\d+)Line$/);
+            return m ? `関門・セクター ${m[1]}` : target;
         }
 
         function getLineColor(target) {
             if (target === 'startLine') return '#E4002B';
             if (target === 'goalLine') return '#28a745';
-            return '#9c27b0';
+            if (target === 'lapLine') return '#9c27b0';
+            return '#00838f';
         }
 
         function initMap() {
@@ -246,7 +262,7 @@
         }
 
         function updatePreviewLine() {
-            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            const target = document.getElementById('targetLineSelect').value;
             if (activeLines[target]) map.removeLayer(activeLines[target]);
             if (p1Temp && p2Temp) {
                 activeLines[target] = L.polyline([p1Temp, p2Temp], {
@@ -263,9 +279,11 @@
                 const lat2 = localStorage.getItem(t + 'P2Lat');
                 const lon2 = localStorage.getItem(t + 'P2Lon');
                 if (lat1 && lon1 && lat2 && lon2) {
-                    activeLines[t] = L.polyline([[lat1, lon1], [lat2, lon2]], {
+                    const poly = L.polyline([[lat1, lon1], [lat2, lon2]], {
                         color: getLineColor(t), weight: 4
                     }).addTo(map);
+                    poly.bindTooltip(getLineLabel(t), { permanent: false });
+                    activeLines[t] = poly;
                 }
             });
         }
@@ -275,8 +293,7 @@
             const radio = document.querySelector(`input[name="courseMode"][value="${savedMode}"]`);
             if (radio) radio.checked = true;
             if (savedMode === 'circuit') {
-                const lapRadio = document.querySelector('input[name="targetLine"][value="lapLine"]');
-                if (lapRadio) lapRadio.checked = true;
+                document.getElementById('targetLineSelect').value = 'lapLine';
             }
         }
 
@@ -284,11 +301,15 @@
             radio.addEventListener('change', (e) => {
                 localStorage.setItem(STORAGE_KEY_MODE, e.target.value);
                 if (e.target.value === 'circuit') {
-                    const lapRadio = document.querySelector('input[name="targetLine"][value="lapLine"]');
-                    if (lapRadio) lapRadio.checked = true;
+                    document.getElementById('targetLineSelect').value = 'lapLine';
                 }
                 displayStatus();
             });
+        });
+
+        document.getElementById('targetLineSelect').addEventListener('change', () => {
+            drawSavedLines();
+            if (p1Temp && p2Temp) updatePreviewLine();
         });
 
         document.getElementById('btnP1').onclick = () => placeMarker('p1');
@@ -299,7 +320,7 @@
                 alert("P1とP2の両方を地図上に設置してください。");
                 return;
             }
-            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            const target = document.getElementById('targetLineSelect').value;
             localStorage.setItem(target + 'P1Lat', p1Temp.lat);
             localStorage.setItem(target + 'P1Lon', p1Temp.lng);
             localStorage.setItem(target + 'P2Lat', p2Temp.lat);
@@ -315,7 +336,7 @@
         };
 
         document.getElementById('btnClearLine').onclick = () => {
-            const target = document.querySelector('input[name="targetLine"]:checked').value;
+            const target = document.getElementById('targetLineSelect').value;
             if (confirm(getLineLabel(target) + " を解除しますか？")) {
                 ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(target + k));
                 if (activeLines[target]) { map.removeLayer(activeLines[target]); activeLines[target] = null; }
@@ -324,7 +345,7 @@
         };
 
         document.getElementById('clearAllLines').onclick = () => {
-            if (confirm("スタートライン・ゴールライン・周回S/Gラインをすべてクリアしますか？")) {
+            if (confirm("スタート・ゴール・周回・全セクターラインをすべてクリアしますか？")) {
                 LINE_TYPES.forEach(t => {
                     ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(t + k));
                     if (activeLines[t]) { map.removeLayer(activeLines[t]); activeLines[t] = null; }
@@ -385,15 +406,22 @@
             const stOk = localStorage.getItem('startLineP1Lat') ? "OK" : "--";
             const glOk = localStorage.getItem('goalLineP1Lat') ? "OK" : "--";
             const lpOk = localStorage.getItem('lapLineP1Lat') ? "OK" : "--";
-            document.getElementById('lineStatusSummary').textContent =
-                `モード: ${modeLabel} | ライン状態: ST:${stOk} / GOAL:${glOk} / LAP:${lpOk}`;
+
+            const activeSectors = [];
+            SECTOR_KEYS.forEach((key, idx) => {
+                if (localStorage.getItem(key + 'P1Lat')) activeSectors.push(idx + 1);
+            });
+            const secText = activeSectors.length > 0 ? activeSectors.join(',') : '未設定';
+
+            document.getElementById('lineStatusSummary').innerHTML =
+                `モード: ${modeLabel} | ST:${stOk} / GOAL:${glOk} / LAP:${lpOk}<br>関門セクター(1-10): ${secText}`;
 
             const interval = localStorage.getItem(STORAGE_KEY_INTERVAL);
             document.getElementById('distanceSummary').textContent =
                 interval ? `ラップ間隔設定: ${interval}m ごとに記録` : "ラップ間隔設定: 未設定";
         }
 
-        // カスタムコースプリセット（モード＋ライン＋ラップ距離）
+        // カスタムコースプリセット（モード＋全ライン＋ラップ距離）
         function updateCourseSelectMenu() {
             const select = document.getElementById('courseSelect');
             select.innerHTML = '<option value="">-- 保存済みコースを選択 --</option>';
@@ -418,6 +446,9 @@
             if (!name) { alert("コース名を入力してください。"); return; }
 
             const id = 'course_' + Date.now();
+            const sectorsObj = {};
+            SECTOR_KEYS.forEach(k => { sectorsObj[k] = readLineObj(k); });
+
             const payload = {
                 id,
                 name,
@@ -425,6 +456,7 @@
                 startLine: readLineObj('startLine'),
                 goalLine: readLineObj('goalLine'),
                 lapLine: readLineObj('lapLine'),
+                sectors: sectorsObj,
                 lapIntervalM: localStorage.getItem(STORAGE_KEY_INTERVAL) || '1000'
             };
 
@@ -451,6 +483,9 @@
             writeLineObj('startLine', item.startLine);
             writeLineObj('goalLine', item.goalLine);
             writeLineObj('lapLine', item.lapLine);
+            SECTOR_KEYS.forEach(k => {
+                writeLineObj(k, item.sectors ? item.sectors[k] : null);
+            });
 
             if (item.lapIntervalM) {
                 localStorage.setItem(STORAGE_KEY_INTERVAL, String(item.lapIntervalM));
@@ -462,7 +497,8 @@
             displayStatus();
             document.getElementById('selectedCourseDisplay').textContent = item.name + " 反映完了";
 
-            const focusLine = item.lapLine || item.startLine || item.goalLine;
+            const firstSectorLine = item.sectors ? Object.values(item.sectors).find(Boolean) : null;
+            const focusLine = item.lapLine || item.startLine || firstSectorLine || item.goalLine;
             if (focusLine?.p1Lat && focusLine?.p1Lon) {
                 map.setView([focusLine.p1Lat, focusLine.p1Lon], 17);
             }
