@@ -3,12 +3,14 @@ const urlsToCache = [
   '/',
   '/index.html',
   '/klap-mar.html',
+'/klap-marw.html',
+  '/analyzer.html',
   '/manifest.json',
   '/service-worker.js',
   '/192.png',
   '/512.png',
   // 画像やJavaScriptファイルなど、アプリを構成するすべての静的ファイルをここに追加
-  '/circuit_data.js', // 設定ツールで使われるファイル
+
   // その他のCSSやJSファイルなど
 
 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js',
