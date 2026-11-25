@@ -34,6 +34,7 @@
         .lap-row span:last-child { font-family: 'Arial Black', sans-serif; text-align: right; color: #000; flex-shrink: 0; }
         .best-lap { color: var(--hrc-red) !important; }
         .best-lap span:last-child { color: var(--hrc-red) !important; }
+        .sector-row span:first-child { color: #00838f; font-weight: bold; }
 
         .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
@@ -124,6 +125,8 @@ let swState = 0; // 0:待機, 1:計測中, 2:停止
 let startTime = 0;
 let startLineCrossTime = null; // スタートライン通過時刻
 let currentLapStartTime = 0;
+let lastSectorCrossTime = 0; // 直前の任意セクター通過（またはスタート）時刻
+let lastSectorCrossDistM = 0; // 直前の任意セクター通過（またはスタート）距離
 let lapRecords = []; // 内部保存されるセクター/距離ラップ配列
 
 let currentSpeedKmh = 0;
@@ -137,7 +140,9 @@ let freezeDisplayTime = "00:00.000";
 let freezeUntil = 0;
 
 let courseMode = 'marathon'; // 'marathon' | 'circuit'
-let lines = { startLine: null, goalLine: null, lapLine: null };
+const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
+let lines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
+let triggeredSectors = {};
 let validStartDirection = null;
 let startTriggered = false;
 let lastLapCrossTime = 0;
@@ -145,7 +150,7 @@ let lastLapCrossTime = 0;
 // 距離ラップ管理用
 let lapIntervalM = 1000;
 let totalDistanceM = 0;
-let sectorBaseDistanceM = 0; // 現在のセクター開始時点の総距離
+let sectorBaseDistanceM = 0; // 現在の距離ラップ開始時点の総距離
 let nextLapDistanceM = 1000;
 let watchId = null;
 let lapCounter = 0;
@@ -212,6 +217,19 @@ function initMap() {
             mapCenteredOnce = true;
         }
     }
+    SECTOR_KEYS.forEach((key) => {
+        const sLine = lines.sectors[key];
+        if (sLine) {
+            L.polyline(
+                [[sLine.p1.lat, sLine.p1.lon], [sLine.p2.lat, sLine.p2.lon]],
+                { color: '#00838f', weight: 3, dashArray: '5, 5' }
+            ).addTo(map);
+            if (!mapCenteredOnce) {
+                map.setView([sLine.p1.lat, sLine.p1.lon], 17);
+                mapCenteredOnce = true;
+            }
+        }
+    });
 
     setTimeout(syncMapAspectRatio, 150);
 }
@@ -274,17 +292,25 @@ function getIntersection(p1, p2, line) {
     return null;
 }
 
-function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual) {
-    const baseTime = currentLapStartTime || startTime;
+function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customLabel = null) {
+    const isCheckpointSector = Boolean(customLabel);
+    const baseTime = isCheckpointSector
+        ? (lastSectorCrossTime || startLineCrossTime || startTime)
+        : (currentLapStartTime || startTime);
     const lapMs = Math.max(0, hitTime - baseTime);
-    const splitMs = Math.max(0, hitTime - startTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
 
-    lapCounter++;
+    if (!isCheckpointSector) {
+        lapCounter++;
+    }
     const distKm = Math.max(0.001, segDistanceM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
     const record = {
         no: lapCounter,
+        label: customLabel,
+        isSector: isCheckpointSector,
         targetDistM: Math.round(targetDistM),
         segDistanceM: Math.round(segDistanceM),
         splitMs: splitMs,
@@ -305,8 +331,13 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual) {
         freezeUntil = Date.now() + 5000;
     }
 
-    currentLapStartTime = hitTime;
-    sectorBaseDistanceM = targetDistM;
+    if (isCheckpointSector) {
+        lastSectorCrossTime = hitTime;
+        lastSectorCrossDistM = targetDistM;
+    } else {
+        currentLapStartTime = hitTime;
+        sectorBaseDistanceM = targetDistM;
+    }
     currentLapPoints = [];
     maxSpeedInLap = 0;
 }
@@ -316,15 +347,22 @@ function updateLapList() {
         document.getElementById('lap').innerHTML = '';
         return;
     }
-    const best = Math.min(...lapRecords.map(r => r.lapMs));
+    const normalLaps = lapRecords.filter(r => !r.isSector);
+    const best = normalLaps.length > 0
+        ? Math.min(...normalLaps.map(r => r.lapMs))
+        : Math.min(...lapRecords.map(r => r.lapMs));
     document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(best)}`;
 
     const prefix = (courseMode === 'circuit') ? 'L' : 'S';
-    document.getElementById('lap').innerHTML = lapRecords.map(r => `
-        <div class="lap-row ${r.lapMs === best ? 'best-lap' : ''}">
-            <span>${prefix}${r.no}(${r.targetDistM}m)</span>
+    document.getElementById('lap').innerHTML = lapRecords.map(r => {
+        const tag = r.label ? r.label : `${prefix}${r.no}`;
+        const rowClass = r.isSector ? 'sector-row' : (r.lapMs === best ? 'best-lap' : '');
+        return `
+        <div class="lap-row ${rowClass}">
+            <span>${tag}(${r.targetDistM}m)</span>
             <span>${timeFormat(r.lapMs)}</span>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 function formatPace(secPerKm) {
@@ -395,6 +433,8 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                             startTriggered = true;
                             startLineCrossTime = hitLap.time;
                             currentLapStartTime = hitLap.time;
+                            lastSectorCrossTime = hitLap.time;
+                            lastSectorCrossDistM = 0;
                             lastLapCrossTime = hitLap.time;
                             totalDistanceM = 0;
                             sectorBaseDistanceM = 0;
@@ -416,6 +456,8 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                         startTriggered = true;
                         startLineCrossTime = hitStart.time;
                         currentLapStartTime = hitStart.time;
+                        lastSectorCrossTime = hitStart.time;
+                        lastSectorCrossDistM = 0;
                         totalDistanceM = 0;
                         sectorBaseDistanceM = 0;
                         nextLapDistanceM = lapIntervalM;
@@ -472,7 +514,22 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                 }
             }
 
-            if (lines.goalLine && lastPos && (!lines.startLine || startTriggered)) {
+            // 任意セクター（SEC 1 ～ SEC 10）通過判定
+            if (lastPos && canAccumulate) {
+                SECTOR_KEYS.forEach((key, idx) => {
+                    const sLine = lines.sectors[key];
+                    if (sLine && !triggeredSectors[key]) {
+                        const hitSec = getIntersection(lastPos, cur, sLine);
+                        if (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000)) {
+                            triggeredSectors[key] = true;
+                            const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                            recordDistanceLap(hitSec.time, Math.round(totalDistanceM), secSegDist, false, `SEC${idx + 1}`);
+                        }
+                    }
+                });
+            }
+
+            if (lines.goalLine && lastPos && canAccumulate) {
                 const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
                 if (hitGoal) {
                     const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
@@ -584,6 +641,9 @@ document.getElementById('startBtn').onclick = function() {
         startLineCrossTime = null;
         lastLapCrossTime = 0;
         currentLapStartTime = startTime;
+        lastSectorCrossTime = startTime;
+        lastSectorCrossDistM = 0;
+        triggeredSectors = {};
         lapRecords = [];
         lapCounter = 0;
         totalDistanceM = 0;
@@ -622,14 +682,19 @@ document.getElementById('historyBtn').onclick = () => {
         alert("ラップ履歴がありません");
         return;
     }
-    const bT = Math.min(...lapRecords.map(r => r.lapMs));
+    const normalLaps = lapRecords.filter(r => !r.isSector);
+    const bT = normalLaps.length > 0
+        ? Math.min(...normalLaps.map(r => r.lapMs))
+        : Math.min(...lapRecords.map(r => r.lapMs));
     const prefix = (courseMode === 'circuit') ? 'L' : 'S';
     document.getElementById('history-body').innerHTML = lapRecords.map(r => {
-        const isBest = (r.lapMs === bT);
+        const tag = r.label ? r.label : `${prefix}${r.no}`;
+        const isBest = (!r.isSector && r.lapMs === bT);
         const timeStyle = isBest ? 'color:var(--hrc-red);' : '';
+        const tagStyle = r.isSector ? 'color:#00838f; font-weight:bold;' : '';
         return `
         <tr>
-            <td>${prefix}${r.no}</td>
+            <td style="${tagStyle}">${tag}</td>
             <td>${r.targetDistM}m</td>
             <td>${timeFormat(r.splitMs)}</td>
             <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
@@ -692,6 +757,16 @@ document.getElementById('gpxBtn').onclick = async function() {
 </trkseg></trk>`;
     }
 
+    SECTOR_KEYS.forEach((key, idx) => {
+        const sLine = lines.sectors[key];
+        if (sLine) {
+            gpx += `\n<trk><name>SEC${idx + 1}_LINE</name><trkseg>
+<trkpt lat="${sLine.p1.lat}" lon="${sLine.p1.lon}"></trkpt>
+<trkpt lat="${sLine.p2.lat}" lon="${sLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+        }
+    });
+
     gpx += `\n</gpx>`;
 
     const filename = `klap_marathon_${new Date().getTime()}.gpx`;
@@ -727,22 +802,27 @@ function downloadFallback(blob, filename) {
 window.addEventListener('resize', syncMapAspectRatio);
 window.addEventListener('orientationchange', () => setTimeout(syncMapAspectRatio, 200));
 
+function readStoredLine(key) {
+    const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
+    const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
+    const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
+    const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
+    if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
+        return { p1: { lat: p1Lat, lon: p1Lon }, p2: { lat: p2Lat, lon: p2Lon } };
+    }
+    return null;
+}
+
 window.onload = () => {
     courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
     lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
     document.getElementById('debug-intv').textContent = lapIntervalM;
 
     ['startLine', 'goalLine', 'lapLine'].forEach(key => {
-        const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
-        const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
-        const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
-        const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
-        if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
-            lines[key] = {
-                p1: { lat: p1Lat, lon: p1Lon },
-                p2: { lat: p2Lat, lon: p2Lon }
-            };
-        }
+        lines[key] = readStoredLine(key);
+    });
+    SECTOR_KEYS.forEach(key => {
+        lines.sectors[key] = readStoredLine(key);
     });
 
     initMap();
