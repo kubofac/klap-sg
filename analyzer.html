@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
     <style>
-        :root { --hrc-red: #ff4444; --hrc-blue: #33ccff; --hrc-purple: #e040fb; --hrc-orange: #ff9900; --hrc-yellow: #ffff00; --hrc-green: #33ff77; }
+        :root { --hrc-red: #ff4444; --hrc-blue: #33ccff; --hrc-purple: #e040fb; --hrc-orange: #ff9900; --hrc-yellow: #ffff00; --hrc-green: #33ff77; --hrc-cyan: #00e5ff; }
         html, body { overflow: hidden; width: 100%; height: 100%; background: #000; margin: 0; padding: 0; font-family: sans-serif; color: #fff; position: fixed; touch-action: none; }
         #main-container { display: flex; height: calc(100vh - 105px); width: 100%; }
         #map { width: 35%; height: 100%; border-right: 1px solid #444; background: #111; position: relative; z-index: 1; }
@@ -78,9 +78,54 @@
             font-weight: bold;
             box-shadow: none;
         }
-        .leaflet-tooltip.sector-pin-label::before { display: none; }
+        .custom-sector-label {
+            background: rgba(0, 20, 28, 0.9);
+            color: var(--hrc-cyan);
+            border: 1px solid var(--hrc-cyan);
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-size: 10px;
+            font-weight: bold;
+            box-shadow: none;
+        }
+        .leaflet-tooltip.sector-pin-label::before,
+        .leaflet-tooltip.custom-sector-label::before { display: none; }
 
         #lap-list-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 10000; flex-direction: column; padding: 15px; box-sizing: border-box; }
+        .mode-tabs {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        .mode-tab-btn {
+            flex: 1;
+            max-width: 180px;
+            padding: 7px 6px;
+            background: #1c1c1c;
+            color: #aaa;
+            border: 1px solid #444;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .mode-tab-btn.active {
+            background: var(--hrc-blue);
+            color: #000;
+            border-color: var(--hrc-blue);
+        }
+        .mode-tab-btn.active-sec {
+            background: var(--hrc-cyan);
+            color: #000;
+            border-color: var(--hrc-cyan);
+        }
+        .mode-tab-btn.active-lap {
+            background: var(--hrc-purple);
+            color: #fff;
+            border-color: var(--hrc-purple);
+        }
+
         .total-run-banner {
             background: #1a1a1a;
             border: 1px solid var(--hrc-yellow);
@@ -117,7 +162,7 @@
         .summary-card.slow-card { border-color: var(--hrc-blue); }
 
         #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
-        .lap-row { display: grid; grid-template-columns: 44px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
+        .lap-row { display: grid; grid-template-columns: 54px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
         .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
         .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
         .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
@@ -179,7 +224,12 @@
 </div>
 
 <div id="lap-list-overlay">
-    <h3 style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
+    <h3 id="overlay-title" style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
+    <div class="mode-tabs">
+        <button class="mode-tab-btn active" id="tab-dist" onclick="switchAnalysisMode('dist')">距離セクター</button>
+        <button class="mode-tab-btn" id="tab-sector" onclick="switchAnalysisMode('sector')">任意セクター</button>
+        <button class="mode-tab-btn" id="tab-circuit" onclick="switchAnalysisMode('circuit')">周回ラップ</button>
+    </div>
     <div class="total-run-banner">
         <div>
             <span style="color:#aaa; font-size:11px;">START → GOAL TOTAL TIME</span><br>
@@ -189,11 +239,11 @@
     </div>
     <div class="sector-summary-bar">
         <div class="summary-card best-card">
-            <div style="color:var(--hrc-red); font-weight:bold;">BEST SECTOR</div>
+            <div style="color:var(--hrc-red); font-weight:bold;">BEST</div>
             <div id="best-sector-summary" style="margin-top:3px;">-</div>
         </div>
         <div class="summary-card slow-card">
-            <div style="color:var(--hrc-blue); font-weight:bold;">SLOWEST SECTOR</div>
+            <div style="color:var(--hrc-blue); font-weight:bold;">SLOWEST</div>
             <div id="slow-sector-summary" style="margin-top:3px;">-</div>
         </div>
     </div>
@@ -203,11 +253,17 @@
 
 <script>
 'use strict';
-let map, markerP, mainChart, fullRunData = null, distanceSectors = [];
+let map, markerP, mainChart, fullRunData = null;
+let distanceSectors = [];
+let customSectors = [];
+let circuitLaps = [];
+let analysisMode = 'dist'; // 'dist' | 'sector' | 'circuit'
+
 let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
 let latOffset = 0, lonOffset = 0;
 let gpxLapIntervalM = 1000;
-let gpxLines = { startLine: null, goalLine: null, lapLine: null };
+const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
+let gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
 const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
 
 window.onload = () => {
@@ -292,7 +348,9 @@ document.getElementById('fileInput').onchange = e => {
     reader.onload = evt => {
         fullRunData = null;
         distanceSectors = [];
-        gpxLines = { startLine: null, goalLine: null, lapLine: null };
+        customSectors = [];
+        circuitLaps = [];
+        gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
         window.isMapInit = false;
         currentFrame = 0;
         idxA = null;
@@ -303,12 +361,52 @@ document.getElementById('fileInput').onchange = e => {
         const xml = new DOMParser().parseFromString(evt.target.result, "text/xml");
         parseMarathonMeta(xml);
         processFullRunGPX(xml);
+
+        // GPXに含まれるラインに応じて初期表示モードを自動選択
+        if (circuitLaps.length > 0 && gpxLines.lapLine) {
+            analysisMode = 'circuit';
+        } else if (customSectors.length > 0) {
+            analysisMode = 'sector';
+        } else {
+            analysisMode = 'dist';
+        }
+        updateModeTabs();
         renderSectorList();
         updateUI();
         document.getElementById('lap-list-overlay').style.display = 'flex';
     };
     reader.readAsText(file);
 };
+
+function switchAnalysisMode(mode) {
+    analysisMode = mode;
+    updateModeTabs();
+    renderSectorList();
+    updateUI();
+}
+
+function updateModeTabs() {
+    const tDist = document.getElementById('tab-dist');
+    const tSec = document.getElementById('tab-sector');
+    const tLap = document.getElementById('tab-circuit');
+    const titleEl = document.getElementById('overlay-title');
+
+    tDist.className = 'mode-tab-btn' + (analysisMode === 'dist' ? ' active' : '');
+    tSec.className = 'mode-tab-btn' + (analysisMode === 'sector' ? ' active-sec' : '');
+    tLap.className = 'mode-tab-btn' + (analysisMode === 'circuit' ? ' active-lap' : '');
+
+    tDist.textContent = `距離セクター (${distanceSectors.length})`;
+    tSec.textContent = `任意セクター (${customSectors.length})`;
+    tLap.textContent = `周回ラップ (${circuitLaps.length})`;
+
+    if (analysisMode === 'circuit') {
+        titleEl.textContent = 'CIRCUIT LAPS (LAP LINE)';
+    } else if (analysisMode === 'sector') {
+        titleEl.textContent = 'CUSTOM SECTORS (SEC 1 - 10)';
+    } else {
+        titleEl.textContent = 'DISTANCE SECTORS (START → GOAL)';
+    }
+}
 
 function parseMarathonMeta(xml) {
     gpxLapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
@@ -329,6 +427,24 @@ function calcDistanceMeters(lat1, lon1, lat2, lon2) {
         Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getLineIntersection(p1, p2, line) {
+    if (!line) return null;
+    const x1 = p1[1], y1 = p1[0], x2 = p2[1], y2 = p2[0];
+    const x3 = line.p1[1], y3 = line.p1[0], x4 = line.p2[1], y4 = line.p2[0];
+    const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+    if (Math.abs(den) < 1e-12) return null;
+    const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
+    const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        return {
+            t,
+            coord: [y1 + (y2 - y1) * t, x1 + (x2 - x1) * t],
+            dir: ((x4 - x3) * (y2 - y1) - (y4 - y3) * (x2 - x1)) > 0 ? 1 : -1
+        };
+    }
+    return null;
 }
 
 function smoothMovingAverage(values, halfWindow = SMOOTH_HALF_WINDOW) {
@@ -359,17 +475,31 @@ function formatPace(secPerKm) {
     return `${m}'${s.toString().padStart(2, '0')}"`;
 }
 
+function loadStoredLineFallback(key) {
+    const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
+    const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
+    const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
+    const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
+    if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
+        return { p1: [p1Lat, p1Lon], p2: [p2Lat, p2Lon] };
+    }
+    return null;
+}
+
 function processFullRunGPX(xml) {
-    gpxLines = { startLine: null, goalLine: null, lapLine: null };
+    gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
     const trks = xml.getElementsByTagName('trk');
     let pts = [];
+    let hasLineTrackInGpx = false;
 
     for (let t = 0; t < trks.length; t++) {
         const nameNode = trks[t].getElementsByTagName('name')[0];
         const trkName = (nameNode ? nameNode.textContent : '').trim().toUpperCase();
         const trkPts = trks[t].getElementsByTagName('trkpt');
+        const secMatch = trkName.match(/^SEC(\d+)_LINE$/);
 
-        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'LAP_LINE') {
+        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'LAP_LINE' || secMatch) {
+            hasLineTrackInGpx = true;
             if (trkPts.length >= 2) {
                 const p1Lat = parseFloat(trkPts[0].getAttribute('lat'));
                 const p1Lon = parseFloat(trkPts[0].getAttribute('lon'));
@@ -380,11 +510,27 @@ function processFullRunGPX(xml) {
                     if (trkName === 'START_LINE') gpxLines.startLine = lineData;
                     if (trkName === 'GOAL_LINE') gpxLines.goalLine = lineData;
                     if (trkName === 'LAP_LINE') gpxLines.lapLine = lineData;
+                    if (secMatch) {
+                        const secNum = parseInt(secMatch[1], 10);
+                        if (secNum >= 1 && secNum <= 10) {
+                            gpxLines.sectors[`sec${secNum}Line`] = lineData;
+                        }
+                    }
                 }
             }
         } else {
             pts = pts.concat(Array.from(trkPts));
         }
+    }
+
+    // GPX内にライン情報がない旧ログの場合はlocalStorageの設定値を補完
+    if (!hasLineTrackInGpx) {
+        gpxLines.startLine = loadStoredLineFallback('startLine');
+        gpxLines.goalLine = loadStoredLineFallback('goalLine');
+        gpxLines.lapLine = loadStoredLineFallback('lapLine');
+        SECTOR_KEYS.forEach(k => {
+            gpxLines.sectors[k] = loadStoredLineFallback(k);
+        });
     }
 
     if (pts.length === 0) {
@@ -469,7 +615,13 @@ function processFullRunGPX(xml) {
     run.totalDistM = run.dists[run.dists.length - 1];
     fullRunData = run;
 
-    // 1本の走行データから距離セクター（L1, L2...）を算出
+    buildDistanceSectors(run);
+    buildCustomSectors(run);
+    buildCircuitLaps(run);
+}
+
+// 1. 距離セクター算出
+function buildDistanceSectors(run) {
     distanceSectors = [];
     let lapNo = 1;
     let nextTargetDistM = gpxLapIntervalM;
@@ -494,6 +646,7 @@ function processFullRunGPX(xml) {
             const sliceElevs = run.elevs.slice(segStartIdx, i + 1);
 
             distanceSectors.push({
+                label: `D${lapNo}`,
                 lapNo,
                 targetDistM: nextTargetDistM,
                 segDistanceM: Math.round(segDist),
@@ -516,7 +669,6 @@ function processFullRunGPX(xml) {
         }
     }
 
-    // ゴールまでの残余区間（最終セクター）
     const lastIdx = run.coords.length - 1;
     const finalElapsedSec = run.timesSec[lastIdx];
     const finalDistM = run.dists[lastIdx];
@@ -527,6 +679,7 @@ function processFullRunGPX(xml) {
         const sliceElevs = run.elevs.slice(segStartIdx, lastIdx + 1);
 
         distanceSectors.push({
+            label: `D${lapNo}`,
             lapNo,
             targetDistM: Math.round(finalDistM),
             segDistanceM: Math.round(remDist),
@@ -543,6 +696,160 @@ function processFullRunGPX(xml) {
     }
 }
 
+// 2. 任意セクター（SEC 1 ～ SEC 10）算出
+function buildCustomSectors(run) {
+    customSectors = [];
+    const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
+    if (activeSecKeys.length === 0) return;
+
+    const hits = [];
+    const triggered = {};
+
+    for (let i = 1; i < run.coords.length; i++) {
+        activeSecKeys.forEach(key => {
+            if (triggered[key]) return;
+            const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.sectors[key]);
+            if (hit) {
+                triggered[key] = true;
+                const secNum = parseInt(key.replace(/\D/g, ''), 10);
+                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
+                const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
+                hits.push({
+                    label: `SEC${secNum}`,
+                    secNum,
+                    splitSec: interpSec,
+                    targetDistM: Math.round(interpDist),
+                    endCoord: hit.coord,
+                    frameIndex: i
+                });
+            }
+        });
+    }
+
+    if (hits.length === 0) return;
+    hits.sort((a, b) => a.splitSec - b.splitSec);
+
+    let prevIdx = 0;
+    let prevTimeSec = 0;
+    let prevDistM = 0;
+
+    hits.forEach((h, idx) => {
+        const durSec = Math.max(0.001, h.splitSec - prevTimeSec);
+        const segDist = Math.max(1, h.targetDistM - prevDistM);
+        const sliceSpeeds = run.speeds.slice(prevIdx, h.frameIndex + 1);
+        const sliceElevs = run.elevs.slice(prevIdx, h.frameIndex + 1);
+
+        customSectors.push({
+            label: h.label,
+            lapNo: idx + 1,
+            targetDistM: h.targetDistM,
+            segDistanceM: Math.round(segDist),
+            splitSec: h.splitSec,
+            toGoalSec: Math.max(0, run.totalTimeSec - h.splitSec),
+            durationSec: durSec,
+            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
+            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
+            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
+            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
+            endCoord: h.endCoord,
+            frameIndex: h.frameIndex
+        });
+
+        prevIdx = h.frameIndex;
+        prevTimeSec = h.splitSec;
+        prevDistM = h.targetDistM;
+    });
+
+    // 最終セクター通過後からゴールまでの区間
+    const lastIdx = run.coords.length - 1;
+    if (run.totalTimeSec > prevTimeSec + 0.5) {
+        const durSec = Math.max(0.001, run.totalTimeSec - prevTimeSec);
+        const segDist = Math.max(1, run.totalDistM - prevDistM);
+        const sliceSpeeds = run.speeds.slice(prevIdx, lastIdx + 1);
+        const sliceElevs = run.elevs.slice(prevIdx, lastIdx + 1);
+
+        customSectors.push({
+            label: 'GOAL',
+            lapNo: customSectors.length + 1,
+            targetDistM: Math.round(run.totalDistM),
+            segDistanceM: Math.round(segDist),
+            splitSec: run.totalTimeSec,
+            toGoalSec: 0,
+            durationSec: durSec,
+            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
+            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
+            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
+            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
+            endCoord: run.coords[lastIdx],
+            frameIndex: lastIdx
+        });
+    }
+}
+
+// 3. 周回ラップ（LAP_LINE）算出
+function buildCircuitLaps(run) {
+    circuitLaps = [];
+    if (!gpxLines.lapLine) return;
+
+    const crossings = [];
+    let validDir = null;
+    let lastCrossSec = -999;
+
+    for (let i = 1; i < run.coords.length; i++) {
+        const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.lapLine);
+        if (hit) {
+            const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
+            const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
+            if (validDir === null) {
+                validDir = hit.dir;
+                crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
+                lastCrossSec = interpSec;
+            } else if (hit.dir === validDir && (interpSec - lastCrossSec > 4.0)) {
+                crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
+                lastCrossSec = interpSec;
+            }
+        }
+    }
+
+    if (crossings.length === 0) return;
+
+    // 1回しか通過していない（計測開始＝通過）場合は先頭を基準に2周目以降を区切る
+    const points = (crossings[0].sec > 2.0)
+        ? crossings
+        : [{ sec: 0, dist: 0, coord: run.coords[0], frameIndex: 0 }, ...crossings.filter(c => c.sec > 2.0)];
+
+    for (let k = 1; k < points.length; k++) {
+        const prev = points[k - 1];
+        const cur = points[k];
+        const durSec = Math.max(0.001, cur.sec - prev.sec);
+        const segDist = Math.max(1, cur.dist - prev.dist);
+        const sliceSpeeds = run.speeds.slice(prev.frameIndex, cur.frameIndex + 1);
+        const sliceElevs = run.elevs.slice(prev.frameIndex, cur.frameIndex + 1);
+
+        circuitLaps.push({
+            label: `L${k}`,
+            lapNo: k,
+            targetDistM: Math.round(cur.dist),
+            segDistanceM: Math.round(segDist),
+            splitSec: cur.sec,
+            toGoalSec: Math.max(0, run.totalTimeSec - cur.sec),
+            durationSec: durSec,
+            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
+            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
+            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
+            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
+            endCoord: cur.coord,
+            frameIndex: cur.frameIndex
+        });
+    }
+}
+
+function getActiveSectorList() {
+    if (analysisMode === 'circuit') return circuitLaps;
+    if (analysisMode === 'sector') return customSectors;
+    return distanceSectors;
+}
+
 function renderSectorList() {
     const c = document.getElementById('lap-list-content');
     const bestBox = document.getElementById('best-sector-summary');
@@ -551,12 +858,19 @@ function renderSectorList() {
     const totalMetaEl = document.getElementById('start-goal-meta');
     if (!c) return;
 
-    if (!fullRunData || distanceSectors.length === 0) {
-        totalTimeEl.innerText = "-";
-        totalMetaEl.innerText = "-";
+    const activeList = getActiveSectorList();
+
+    if (!fullRunData || activeList.length === 0) {
+        totalTimeEl.innerText = fullRunData ? formatLapTime(fullRunData.totalTimeSec) : "-";
+        totalMetaEl.innerText = fullRunData ? `DIST: ${Math.round(fullRunData.totalDistM)}m` : "-";
         bestBox.innerText = "-";
         slowBox.innerText = "-";
-        c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">セクターデータがありません</div>`;
+        const emptyMsg = analysisMode === 'sector'
+            ? "任意セクター（SEC1〜SEC10）の通過データがありません"
+            : analysisMode === 'circuit'
+                ? "周回ライン（LAP_LINE）の周回データがありません"
+                : "セクターデータがありません";
+        c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">${emptyMsg}</div>`;
         return;
     }
 
@@ -566,28 +880,34 @@ function renderSectorList() {
     totalTimeEl.innerText = formatLapTime(totalSec);
     totalMetaEl.innerHTML = `DIST: <b>${Math.round(totalDist)}m</b> / AVG PACE: <b>${formatPace(avgPace)}/km</b>`;
 
-    let bestSec = distanceSectors[0];
-    let slowSec = distanceSectors[0];
-    distanceSectors.forEach(sec => {
-        if (sec.paceSecPerKm < bestSec.paceSecPerKm) bestSec = sec;
-        if (sec.paceSecPerKm > slowSec.paceSecPerKm) slowSec = sec;
+    let bestSec = activeList[0];
+    let slowSec = activeList[0];
+    activeList.forEach(sec => {
+        if (analysisMode === 'circuit') {
+            if (sec.durationSec < bestSec.durationSec) bestSec = sec;
+            if (sec.durationSec > slowSec.durationSec) slowSec = sec;
+        } else {
+            if (sec.paceSecPerKm < bestSec.paceSecPerKm) bestSec = sec;
+            if (sec.paceSecPerKm > slowSec.paceSecPerKm) slowSec = sec;
+        }
     });
 
-    bestBox.innerHTML = `L${bestSec.lapNo} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red); font-weight:bold;">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
-    slowBox.innerHTML = `L${slowSec.lapNo} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue); font-weight:bold;">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
+    bestBox.innerHTML = `${bestSec.label} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red); font-weight:bold;">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
+    slowBox.innerHTML = `${slowSec.label} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue); font-weight:bold;">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
 
-    const globalMaxS = Math.max(...distanceSectors.map(s => s.maxSpeed));
+    const globalMaxS = Math.max(...activeList.map(s => s.maxSpeed));
 
-    c.innerHTML = `<div class="lap-row list-header"><span>LAP</span><span>DIST</span><span>SPLIT</span><span>LAP TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span><span>TO GOAL</span></div>`;
+    c.innerHTML = `<div class="lap-row list-header"><span>SEC</span><span>DIST</span><span>SPLIT</span><span>TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span><span>TO GOAL</span></div>`;
 
-    distanceSectors.forEach((sec) => {
+    activeList.forEach((sec) => {
         const isBest = (sec.lapNo === bestSec.lapNo);
-        const isSlow = (sec.lapNo === slowSec.lapNo && distanceSectors.length > 1);
+        const isSlow = (sec.lapNo === slowSec.lapNo && activeList.length > 1);
         const row = document.createElement('div');
         row.className = `lap-row ${isBest ? 'row-best' : ''} ${isSlow ? 'row-slow' : ''}`;
+        const labelStyle = analysisMode === 'sector' ? 'color:var(--hrc-cyan); font-weight:bold;' : '';
 
         row.innerHTML = `
-            <span>L${sec.lapNo}</span>
+            <span style="${labelStyle}">${sec.label}</span>
             <span>${sec.targetDistM}m</span>
             <span>${formatLapTime(sec.splitSec)}</span>
             <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatLapTime(sec.durationSec)}</span>
@@ -658,21 +978,23 @@ function updateUI() {
         }).addTo(g);
     }
 
-    distanceSectors.forEach((sec) => {
+    const activeList = getActiveSectorList();
+    activeList.forEach((sec) => {
         if (!sec.endCoord) return;
         const latlng = [sec.endCoord[0] + latOffset, sec.endCoord[1] + lonOffset];
+        const isCustom = (analysisMode === 'sector');
         const pin = L.circleMarker(latlng, {
             radius: 5,
             color: '#000',
             weight: 1.5,
-            fillColor: '#ffff00',
+            fillColor: isCustom ? '#00e5ff' : '#ffff00',
             fillOpacity: 0.95
         });
-        pin.bindTooltip(`L${sec.lapNo} (${sec.targetDistM}m)`, {
+        pin.bindTooltip(`${sec.label} (${sec.targetDistM}m)`, {
             permanent: true,
             direction: 'top',
             offset: [0, -4],
-            className: 'sector-pin-label'
+            className: isCustom ? 'custom-sector-label' : 'sector-pin-label'
         });
         pin.addTo(g);
     });
@@ -696,6 +1018,24 @@ function updateUI() {
             permanent: true,
             direction: 'center',
             className: 'sector-pin-label'
+        }).addTo(g);
+    });
+
+    // GPX内の任意セクター（SEC1_LINE ～ SEC10_LINE）を描画
+    SECTOR_KEYS.forEach((key, idx) => {
+        const line = gpxLines.sectors[key];
+        if (!line) return;
+        const p1 = [line.p1[0] + latOffset, line.p1[1] + lonOffset];
+        const p2 = [line.p2[0] + latOffset, line.p2[1] + lonOffset];
+        L.polyline([p1, p2], {
+            color: '#00e5ff',
+            weight: 4,
+            dashArray: '6, 6',
+            opacity: 0.95
+        }).bindTooltip(`SEC${idx + 1}`, {
+            permanent: true,
+            direction: 'center',
+            className: 'custom-sector-label'
         }).addTo(g);
     });
 
@@ -743,6 +1083,28 @@ function createCharts() {
     const annotations = { now: { type: 'line', xMin: currentFrame, xMax: currentFrame, borderColor: '#fff', borderWidth: 2 } };
     if (idxA !== null) annotations.lineA = { type: 'line', xMin: idxA, xMax: idxA, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
     if (idxB !== null) annotations.lineB = { type: 'line', xMin: idxB, xMax: idxB, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
+
+    // 任意セクター通過地点をグラフ上に縦線で表示
+    customSectors.forEach((sec, idx) => {
+        if (sec.label === 'GOAL') return;
+        annotations[`secLine_${idx}`] = {
+            type: 'line',
+            xMin: sec.frameIndex,
+            xMax: sec.frameIndex,
+            borderColor: '#00e5ff',
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            label: {
+                display: true,
+                content: sec.label,
+                position: 'start',
+                backgroundColor: 'rgba(0, 20, 28, 0.85)',
+                color: '#00e5ff',
+                font: { size: 9, weight: 'bold' },
+                padding: 2
+            }
+        };
+    });
 
     mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
         type: 'line',
@@ -801,6 +1163,7 @@ function updateFrame() {
 document.getElementById('btnSetA').onclick = () => { idxA = currentFrame; createCharts(); updateFrame(); };
 document.getElementById('btnSetB').onclick = () => { idxB = currentFrame; createCharts(); updateFrame(); };
 document.getElementById('openListBtn').onclick = () => {
+    updateModeTabs();
     renderSectorList();
     document.getElementById('lap-list-overlay').style.display = 'flex';
 };
