@@ -459,8 +459,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         const sLine = lines.sectors[key];
                         if (sLine && !triggeredSectors[key]) {
                             const hitSec = getIntersection(lastPos, cur, sLine);
-                            const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
-                            const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                            const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 10000));
+                            const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 10000));
                             if (sinceStartOk && sinceLastSecOk) {
                                 triggeredSectors[key] = true;
                                 const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
