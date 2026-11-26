@@ -162,7 +162,7 @@
         .summary-card.slow-card { border-color: var(--hrc-blue); }
 
         #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
-        .lap-row { display: grid; grid-template-columns: 54px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
+        .lap-row { display: grid; grid-template-columns: 76px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
         .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
         .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
         .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
@@ -362,7 +362,6 @@ document.getElementById('fileInput').onchange = e => {
         parseMarathonMeta(xml);
         processFullRunGPX(xml);
 
-        // GPXに含まれるラインに応じて初期表示モードを自動選択
         if (circuitLaps.length > 0 && gpxLines.lapLine) {
             analysisMode = 'circuit';
         } else if (customSectors.length > 0) {
@@ -523,7 +522,6 @@ function processFullRunGPX(xml) {
         }
     }
 
-    // GPX内にライン情報がない旧ログの場合はlocalStorageの設定値を補完
     if (!hasLineTrackInGpx) {
         gpxLines.startLine = loadStoredLineFallback('startLine');
         gpxLines.goalLine = loadStoredLineFallback('goalLine');
@@ -608,7 +606,6 @@ function processFullRunGPX(xml) {
 
     if (run.coords.length === 0) return;
 
-    // 速度・標高を移動平均で平滑化
     run.speeds = smoothMovingAverage(run.speeds, SMOOTH_HALF_WINDOW);
     run.elevs = smoothMovingAverage(run.elevs, SMOOTH_HALF_WINDOW);
     run.totalTimeSec = run.timesSec[run.timesSec.length - 1];
@@ -696,26 +693,65 @@ function buildDistanceSectors(run) {
     }
 }
 
-// 2. 任意セクター（SEC 1 ～ SEC 10）算出
+// 2. 任意セクター（SEC 1 ～ SEC 10・周回ごとの再通過＆3秒クールダウン対応）
 function buildCustomSectors(run) {
     customSectors = [];
     const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
     if (activeSecKeys.length === 0) return;
 
+    const lapCrossSecs = [];
+    if (gpxLines.lapLine) {
+        let validDir = null;
+        let lastLapSec = -999;
+        for (let i = 1; i < run.coords.length; i++) {
+            const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.lapLine);
+            if (hit) {
+                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
+                if (validDir === null) {
+                    validDir = hit.dir;
+                    lapCrossSecs.push(interpSec);
+                    lastLapSec = interpSec;
+                } else if (hit.dir === validDir && (interpSec - lastLapSec > 4.0)) {
+                    lapCrossSecs.push(interpSec);
+                    lastLapSec = interpSec;
+                }
+            }
+        }
+    }
+
+    const getLapNumberAtSec = (sec) => {
+        if (lapCrossSecs.length === 0) return null;
+        let lapNo = 1;
+        for (let c = 0; c < lapCrossSecs.length; c++) {
+            if (sec > lapCrossSecs[c] + 0.5) {
+                lapNo = c + 2;
+            }
+        }
+        return lapNo;
+    };
+
     const hits = [];
-    const triggered = {};
+    const lastHitSecByKey = {};
+    let lastAnyHitSec = -999;
 
     for (let i = 1; i < run.coords.length; i++) {
         activeSecKeys.forEach(key => {
-            if (triggered[key]) return;
             const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.sectors[key]);
             if (hit) {
-                triggered[key] = true;
-                const secNum = parseInt(key.replace(/\D/g, ''), 10);
                 const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
+                const prevSameSec = lastHitSecByKey[key] ?? -999;
+                if (interpSec - prevSameSec < 3.0 || interpSec - lastAnyHitSec < 3.0) return;
+
+                lastHitSecByKey[key] = interpSec;
+                lastAnyHitSec = interpSec;
+
+                const secNum = parseInt(key.replace(/\D/g, ''), 10);
+                const lapNo = getLapNumberAtSec(interpSec);
+                const label = lapNo ? `SEC${secNum}(L${lapNo})` : `SEC${secNum}`;
                 const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
+
                 hits.push({
-                    label: `SEC${secNum}`,
+                    label,
                     secNum,
                     splitSec: interpSec,
                     targetDistM: Math.round(interpDist),
@@ -760,7 +796,6 @@ function buildCustomSectors(run) {
         prevDistM = h.targetDistM;
     });
 
-    // 最終セクター通過後からゴールまでの区間
     const lastIdx = run.coords.length - 1;
     if (run.totalTimeSec > prevTimeSec + 0.5) {
         const durSec = Math.max(0.001, run.totalTimeSec - prevTimeSec);
@@ -811,16 +846,11 @@ function buildCircuitLaps(run) {
         }
     }
 
-    if (crossings.length === 0) return;
+    if (crossings.length < 2) return;
 
-    // 1回しか通過していない（計測開始＝通過）場合は先頭を基準に2周目以降を区切る
-    const points = (crossings[0].sec > 2.0)
-        ? crossings
-        : [{ sec: 0, dist: 0, coord: run.coords[0], frameIndex: 0 }, ...crossings.filter(c => c.sec > 2.0)];
-
-    for (let k = 1; k < points.length; k++) {
-        const prev = points[k - 1];
-        const cur = points[k];
+    for (let k = 1; k < crossings.length; k++) {
+        const prev = crossings[k - 1];
+        const cur = crossings[k];
         const durSec = Math.max(0.001, cur.sec - prev.sec);
         const segDist = Math.max(1, cur.dist - prev.dist);
         const sliceSpeeds = run.speeds.slice(prev.frameIndex, cur.frameIndex + 1);
@@ -999,7 +1029,6 @@ function updateUI() {
         pin.addTo(g);
     });
 
-    // GPX内のSTART_LINE / GOAL_LINE / LAP_LINEを描画
     const lineConfigs = [
         { key: 'startLine', color: '#E4002B', label: 'START' },
         { key: 'goalLine',  color: '#28a745', label: 'GOAL' },
@@ -1021,7 +1050,6 @@ function updateUI() {
         }).addTo(g);
     });
 
-    // GPX内の任意セクター（SEC1_LINE ～ SEC10_LINE）を描画
     SECTOR_KEYS.forEach((key, idx) => {
         const line = gpxLines.sectors[key];
         if (!line) return;
@@ -1084,7 +1112,6 @@ function createCharts() {
     if (idxA !== null) annotations.lineA = { type: 'line', xMin: idxA, xMax: idxA, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
     if (idxB !== null) annotations.lineB = { type: 'line', xMin: idxB, xMax: idxB, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
 
-    // 任意セクター通過地点をグラフ上に縦線で表示
     customSectors.forEach((sec, idx) => {
         if (sec.label === 'GOAL') return;
         annotations[`secLine_${idx}`] = {
@@ -1199,3 +1226,4 @@ if ('serviceWorker' in navigator) {
 
 </body>
 </html>
+```[cite: 4]
