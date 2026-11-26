@@ -93,8 +93,11 @@
 
         <div class="target-selector">
             <label><input type="radio" name="courseMode" value="marathon" checked> マラソン/区間（ST・GOAL・SEC）</label>
-            <label><input type="radio" name="courseMode" value="circuit"> 周回コース（周回S/Gライン1本）</label>
+            <label><input type="radio" name="courseMode" value="circuit"> 周回コース（周回S/G・SEC・周回数）</label>
         </div>
+
+        <label for="targetLapCountInput" style="font-size: 13px; color: #333;">周回コースの目標周回数（0 または空欄で無制限）</label>
+        <input type="number" id="targetLapCountInput" min="0" max="999" step="1" placeholder="例: 5（0で無制限）">
 
         <label for="targetLineSelect" style="font-size: 13px; color: #333;">設置・編集する対象ラインを選択</label>
         <select id="targetLineSelect">
@@ -114,7 +117,7 @@
         </select>
 
         <div id="lineStatusSummary" class="result-text" style="color:#333;">
-            モード: マラソン | ST:-- / GOAL:-- / LAP:--<br>関門セクター: 未設定
+            モード: マラソン | ST:-- / GOAL:-- / LAP:--<br>関門セクター: 未設定 | 周回数: 無制限
         </div>
 
         <button class="btn-decide" id="btnDecideLine">選択中のラインを保存</button>
@@ -143,7 +146,7 @@
 
     <!-- 3. カスタムコースプリセット -->
     <div class="control-group">
-        <label>3. カスタムコースプリセット（モード＋全ライン＋ラップ距離）</label>
+        <label>3. カスタムコースプリセット（モード＋周回数＋全ライン＋ラップ距離）</label>
         <select id="courseSelect" onchange="toggleDeleteButton()">
             <option value="">-- 保存済みコースを選択 --</option>
         </select>
@@ -151,7 +154,7 @@
         <div style="margin-top: 5px; margin-bottom: 12px; padding: 12px; background: #eef7ff; border: 1px solid #bce0ff; border-radius: 8px;">
             <label style="font-weight: bold; font-size: 14px; color: #1565C0; display: block; margin-bottom: 5px;">現在の設定をコース保存</label>
             <div style="display: flex; gap: 8px;">
-                <input type="text" id="newCourseName" placeholder="例：フルマラソン関門10 / 河川敷1km" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="newCourseName" placeholder="例：5周レース関門あり / 河川敷1km" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
                 <button onclick="saveNewCustomCourse()" style="width: auto; margin-bottom: 0; padding: 8px 14px; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">追加保存</button>
             </div>
         </div>
@@ -167,11 +170,11 @@
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        // パスワード設定（"klap2026" のBase64）
         const TARGET_TOKEN = "a2xhcDIwMjY=";
         const AUTH_STORAGE_KEY = "klap_auth_v1";
         const STORAGE_KEY_INTERVAL = "marathon_lap_interval_m";
         const STORAGE_KEY_MODE = "klap_course_mode";
+        const STORAGE_KEY_TARGET_LAPS = "klap_circuit_laps";
         const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
         const LINE_TYPES = ['startLine', 'goalLine', 'lapLine', ...SECTOR_KEYS];
 
@@ -220,7 +223,7 @@
         }
 
         function initMap() {
-            map = L.map('mapid').setView([35.68, 139.76], 15);
+            map = L.map('mapid', { zoomAnimation: false }).setView([35.68, 139.76], 15);
 
             L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
                 maxZoom: 18,
@@ -235,28 +238,53 @@
             navigator.geolocation.getCurrentPosition(pos => {
                 const latlng = [pos.coords.latitude, pos.coords.longitude];
                 const acc = pos.coords.accuracy || 10;
-                gpsCircle = L.circle(latlng, { radius: acc, color: '#0275d8', fillOpacity: 0.25 }).addTo(map);
-                map.setView(latlng, 17);
+                gpsCircle = L.circle(latlng, { radius: acc, color: '#0275d8', fillOpacity: 0.25, interactive: false }).addTo(map);
+                // ユーザーがまだP1/P2操作を始めていない場合のみ初期センタリング
+                if (!p1Temp && !p2Temp) {
+                    map.setView(latlng, 17);
+                }
                 document.getElementById('instructionMessage').textContent =
-                    `内部GPS取得完了（精度 約${Math.round(acc)}m）。ラインを設定してください。`;
+                    `内部GPS取得完了（精度 約${Math.round(acc)}m）。地図を動かさずP1・P2を設置できます。`;
             }, err => {
                 document.getElementById('instructionMessage').textContent =
                     "現在地を取得できませんでした。位置情報許可を確認し、地図を移動して設置してください。";
             }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
         }
 
+        // 地図の中心を動かさず、現在の地図中心座標にP1/P2マーカーを配置
         function placeMarker(type) {
+            if (!map) return;
             const center = map.getCenter();
+            const fixedLatLng = L.latLng(center.lat, center.lng);
+
             if (type === 'p1') {
-                if (p1Marker) map.removeLayer(p1Marker);
-                p1Marker = L.marker(center, { draggable: true }).addTo(map);
-                p1Temp = center;
-                p1Marker.on('dragend', e => { p1Temp = e.target.getLatLng(); updatePreviewLine(); });
+                if (p1Marker) {
+                    p1Marker.setLatLng(fixedLatLng);
+                } else {
+                    p1Marker = L.marker(fixedLatLng, { draggable: true, autoPan: false }).addTo(map);
+                    p1Marker.on('dragstart', () => { map.dragging.disable(); });
+                    p1Marker.on('drag', e => { p1Temp = e.target.getLatLng(); updatePreviewLine(); });
+                    p1Marker.on('dragend', e => {
+                        map.dragging.enable();
+                        p1Temp = e.target.getLatLng();
+                        updatePreviewLine();
+                    });
+                }
+                p1Temp = fixedLatLng;
             } else {
-                if (p2Marker) map.removeLayer(p2Marker);
-                p2Marker = L.marker(center, { draggable: true }).addTo(map);
-                p2Temp = center;
-                p2Marker.on('dragend', e => { p2Temp = e.target.getLatLng(); updatePreviewLine(); });
+                if (p2Marker) {
+                    p2Marker.setLatLng(fixedLatLng);
+                } else {
+                    p2Marker = L.marker(fixedLatLng, { draggable: true, autoPan: false }).addTo(map);
+                    p2Marker.on('dragstart', () => { map.dragging.disable(); });
+                    p2Marker.on('drag', e => { p2Temp = e.target.getLatLng(); updatePreviewLine(); });
+                    p2Marker.on('dragend', e => {
+                        map.dragging.enable();
+                        p2Temp = e.target.getLatLng();
+                        updatePreviewLine();
+                    });
+                }
+                p2Temp = fixedLatLng;
             }
             updatePreviewLine();
         }
@@ -266,7 +294,7 @@
             if (activeLines[target]) map.removeLayer(activeLines[target]);
             if (p1Temp && p2Temp) {
                 activeLines[target] = L.polyline([p1Temp, p2Temp], {
-                    color: getLineColor(target), weight: 4, dashArray: '6, 8'
+                    color: getLineColor(target), weight: 4, dashArray: '6, 8', interactive: false
                 }).addTo(map);
             }
         }
@@ -295,6 +323,9 @@
             if (savedMode === 'circuit') {
                 document.getElementById('targetLineSelect').value = 'lapLine';
             }
+
+            const savedLaps = localStorage.getItem(STORAGE_KEY_TARGET_LAPS);
+            document.getElementById('targetLapCountInput').value = (savedLaps && Number(savedLaps) > 0) ? savedLaps : '0';
         }
 
         document.querySelectorAll('input[name="courseMode"]').forEach(radio => {
@@ -305,6 +336,13 @@
                 }
                 displayStatus();
             });
+        });
+
+        document.getElementById('targetLapCountInput').addEventListener('change', (e) => {
+            const num = Math.max(0, Math.floor(Number(e.target.value) || 0));
+            e.target.value = String(num);
+            localStorage.setItem(STORAGE_KEY_TARGET_LAPS, String(num));
+            displayStatus();
         });
 
         document.getElementById('targetLineSelect').addEventListener('change', () => {
@@ -354,7 +392,6 @@
             }
         };
 
-        // ラップ距離間隔（m）の保存・読込
         function setQuickDistance(meters) {
             document.getElementById('lapIntervalInput').value = meters;
         }
@@ -406,6 +443,8 @@
             const stOk = localStorage.getItem('startLineP1Lat') ? "OK" : "--";
             const glOk = localStorage.getItem('goalLineP1Lat') ? "OK" : "--";
             const lpOk = localStorage.getItem('lapLineP1Lat') ? "OK" : "--";
+            const targetLaps = Math.max(0, Math.floor(Number(localStorage.getItem(STORAGE_KEY_TARGET_LAPS)) || 0));
+            const lapsText = targetLaps > 0 ? `${targetLaps}周でゴール` : '無制限';
 
             const activeSectors = [];
             SECTOR_KEYS.forEach((key, idx) => {
@@ -414,14 +453,13 @@
             const secText = activeSectors.length > 0 ? activeSectors.join(',') : '未設定';
 
             document.getElementById('lineStatusSummary').innerHTML =
-                `モード: ${modeLabel} | ST:${stOk} / GOAL:${glOk} / LAP:${lpOk}<br>関門セクター(1-10): ${secText}`;
+                `モード: ${modeLabel} | ST:${stOk} / GOAL:${glOk} / LAP:${lpOk}<br>関門セクター(1-10): ${secText} | 周回数: ${lapsText}`;
 
             const interval = localStorage.getItem(STORAGE_KEY_INTERVAL);
             document.getElementById('distanceSummary').textContent =
                 interval ? `ラップ間隔設定: ${interval}m ごとに記録` : "ラップ間隔設定: 未設定";
         }
 
-        // カスタムコースプリセット（モード＋全ライン＋ラップ距離）
         function updateCourseSelectMenu() {
             const select = document.getElementById('courseSelect');
             select.innerHTML = '<option value="">-- 保存済みコースを選択 --</option>';
@@ -429,7 +467,8 @@
             list.forEach(item => {
                 const opt = document.createElement('option');
                 opt.value = item.id;
-                const tag = item.courseMode === 'circuit' ? '[周回]' : '[区間]';
+                const lapsInfo = item.targetLaps > 0 ? `${item.targetLaps}周` : '無制限';
+                const tag = item.courseMode === 'circuit' ? `[周回:${lapsInfo}]` : '[区間]';
                 opt.textContent = `${tag} ${item.name}`;
                 select.appendChild(opt);
             });
@@ -448,11 +487,14 @@
             const id = 'course_' + Date.now();
             const sectorsObj = {};
             SECTOR_KEYS.forEach(k => { sectorsObj[k] = readLineObj(k); });
+            const targetLaps = Math.max(0, Math.floor(Number(document.getElementById('targetLapCountInput').value) || 0));
+            localStorage.setItem(STORAGE_KEY_TARGET_LAPS, String(targetLaps));
 
             const payload = {
                 id,
                 name,
                 courseMode: localStorage.getItem(STORAGE_KEY_MODE) || 'marathon',
+                targetLaps,
                 startLine: readLineObj('startLine'),
                 goalLine: readLineObj('goalLine'),
                 lapLine: readLineObj('lapLine'),
@@ -480,6 +522,7 @@
 
             const mode = item.courseMode || 'marathon';
             localStorage.setItem(STORAGE_KEY_MODE, mode);
+            localStorage.setItem(STORAGE_KEY_TARGET_LAPS, String(Math.max(0, Math.floor(Number(item.targetLaps) || 0))));
             writeLineObj('startLine', item.startLine);
             writeLineObj('goalLine', item.goalLine);
             writeLineObj('lapLine', item.lapLine);
@@ -524,6 +567,7 @@
                 const keysToRemove = [
                     STORAGE_KEY_INTERVAL,
                     STORAGE_KEY_MODE,
+                    STORAGE_KEY_TARGET_LAPS,
                     'customMarathonList',
                     'marathon_last_laps'
                 ];
