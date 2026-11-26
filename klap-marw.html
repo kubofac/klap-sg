@@ -10,7 +10,6 @@
         :root { --hrc-red: #D40024; --hrc-black: #000000; --bg-light: #ffffff; --hrc-orange: #D96B00; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-light); color: var(--hrc-black); font-family: 'Arial Black', sans-serif; overflow: hidden; position: fixed; }
 
-        /* 左側：リアルラップ～BEST LAPの塊を少し上へ（BEST LAPが従来のTOTAL位置付近へ） */
         .main-ui-container { position: fixed; left: 15px; bottom: calc(100% - 37.5%); width: calc(100% - 345px); max-width: 62%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; z-index: 5; pointer-events: none; box-sizing: border-box; }
         #stline-lap { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: var(--hrc-red); }
         #display1 { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: #000; margin-top: 1.2vh; }
@@ -20,11 +19,9 @@
         #best-display { font-size: 3.1vh; color: #000; font-weight: 900; line-height: 0.95; margin-top: 0.2vh; white-space: nowrap; }
         .best-label { font-size: 1.3vh; color: var(--hrc-red); margin-right: 6px; }
 
-        /* 左下：JSで横幅から高さを width/3 計算して縦1：横3を維持する地図（S1部に食い込まない幅） */
         #map-wrapper { position: fixed; left: 15px; top: 42.5%; width: calc(100% - 345px); max-width: 62%; border: 1px solid #bbb; border-radius: 6px; overflow: hidden; z-index: 4; background: #eaeaea; box-sizing: border-box; }
         #map { width: 100%; height: 100%; }
 
-        /* 右側パネル（基準コードの幅・間隔・文字サイズを維持＋桁増え時のはみ出し防止） */
         .right-section-wrapper { position: fixed; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
         #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
         #lap { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; pointer-events: auto; text-align: right; color: #000; }
@@ -42,7 +39,6 @@
         #sec_dist_val { font-size: 22px; color: #1b8a3b; }
         #dist_val { font-size: 24px; color: #0077cc; }
 
-        /* デバッグ・距離情報 */
         #debug-info { position: fixed; bottom: 65px; left: 10px; font-family: monospace; font-size: 10px; color: #555; z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 3px; }
 
         footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #fff; border-top: 1px solid #ccc; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
@@ -85,7 +81,7 @@
     </div>
 
     <div id="debug-info">
-        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">1000</span>m
+        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">1000</span>m | LAPS: <span id="debug-laps">∞</span>
     </div>
 
     <footer>
@@ -113,7 +109,6 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-// 未認証なら設定画面へ戻す
 if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
     alert("認証が必要です。設定画面からパスワードを入力してください。");
     location.href = "index.html";
@@ -123,11 +118,11 @@ if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
 
 let swState = 0; // 0:待機, 1:計測中, 2:停止
 let startTime = 0;
-let startLineCrossTime = null; // スタートライン通過時刻
+let startLineCrossTime = null;
 let currentLapStartTime = 0;
-let lastSectorCrossTime = 0; // 直前の任意セクター通過（またはスタート）時刻
-let lastSectorCrossDistM = 0; // 直前の任意セクター通過（またはスタート）距離
-let lapRecords = []; // 内部保存されるセクター/距離ラップ配列
+let lastSectorCrossTime = 0;
+let lastSectorCrossDistM = 0;
+let lapRecords = [];
 
 let currentSpeedKmh = 0;
 let maxSpeedInLap = 0;
@@ -140,6 +135,7 @@ let freezeDisplayTime = "00:00.000";
 let freezeUntil = 0;
 
 let courseMode = 'marathon'; // 'marathon' | 'circuit'
+let targetCircuitLaps = 0; // 0 = 無制限
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
 let lines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
 let triggeredSectors = {};
@@ -147,17 +143,15 @@ let validStartDirection = null;
 let startTriggered = false;
 let lastLapCrossTime = 0;
 
-// 距離ラップ管理用
 let lapIntervalM = 1000;
 let totalDistanceM = 0;
-let sectorBaseDistanceM = 0; // 現在の距離ラップ開始時点の総距離
+let sectorBaseDistanceM = 0;
 let nextLapDistanceM = 1000;
 let watchId = null;
 let lapCounter = 0;
 const startCooldownMs = 5000;
 const lapCooldownMs = 5000;
 
-// 地図・軌跡管理用
 let map = null;
 let currentMarker = null;
 let trackPolyline = null;
@@ -258,7 +252,7 @@ function updateMapPosition(lat, lon) {
     if (!mapCenteredOnce) {
         map.setView(latlng, 17);
         mapCenteredOnce = true;
-    } else {
+    } else if (swState === 1) {
         map.panTo(latlng, { animate: false });
     }
 }
@@ -301,15 +295,20 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customL
     const splitBase = startLineCrossTime || startTime;
     const splitMs = Math.max(0, hitTime - splitBase);
 
+    const completedLapNo = isCheckpointSector ? null : (lapCounter + 1);
     if (!isCheckpointSector) {
         lapCounter++;
     }
     const distKm = Math.max(0.001, segDistanceM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
+    const displayLabel = isCheckpointSector
+        ? (completedLapNo ? `${customLabel}(L${completedLapNo})` : customLabel)
+        : null;
+
     const record = {
-        no: lapCounter,
-        label: customLabel,
+        no: completedLapNo || lapCounter,
+        label: displayLabel,
         isSector: isCheckpointSector,
         targetDistM: Math.round(targetDistM),
         segDistanceM: Math.round(segDistanceM),
@@ -336,7 +335,13 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customL
         lastSectorCrossDistM = targetDistM;
     } else {
         currentLapStartTime = hitTime;
+        lastSectorCrossTime = hitTime;
+        lastSectorCrossDistM = targetDistM;
         sectorBaseDistanceM = targetDistM;
+        // 周回コースでは1周完了ごとにセクター通過フラグをリセットし次周も計測可能にする
+        if (courseMode === 'circuit') {
+            triggeredSectors = {};
+        }
     }
     currentLapPoints = [];
     maxSpeedInLap = 0;
@@ -385,7 +390,6 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
 
     if (swState === 1) {
         if (courseMode === 'circuit' && lines.lapLine) {
-            // 周回コースモード：1本の周回ライン通過でスタート＆ラップ計測
             const canAccumulate = startTriggered;
             if (canAccumulate && lastPos) {
                 const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
@@ -425,6 +429,23 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
             }
 
             if (lastPos) {
+                // 周回中の任意セクター（SEC 1 ～ SEC 10）通過判定
+                if (canAccumulate) {
+                    SECTOR_KEYS.forEach((key, idx) => {
+                        const sLine = lines.sectors[key];
+                        if (sLine && !triggeredSectors[key]) {
+                            const hitSec = getIntersection(lastPos, cur, sLine);
+                            const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
+                            const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                            if (sinceStartOk && sinceLastSecOk) {
+                                triggeredSectors[key] = true;
+                                const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                                recordDistanceLap(hitSec.time, Math.round(totalDistanceM), secSegDist, false, `SEC${idx + 1}`);
+                            }
+                        }
+                    });
+                }
+
                 const hitLap = getIntersection(lastPos, cur, lines.lapLine);
                 if (hitLap) {
                     if (!startTriggered) {
@@ -438,11 +459,19 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                             lastLapCrossTime = hitLap.time;
                             totalDistanceM = 0;
                             sectorBaseDistanceM = 0;
+                            triggeredSectors = {};
                         }
                     } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
                         const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
                         recordDistanceLap(hitLap.time, Math.round(totalDistanceM), segDist, false);
                         lastLapCrossTime = hitLap.time;
+
+                        // 設定周回数に到達したら自動ゴール
+                        if (targetCircuitLaps > 0 && lapCounter >= targetCircuitLaps) {
+                            swState = 2;
+                            document.getElementById('startBtn').classList.remove('active');
+                            document.getElementById('gpxBtn').style.display = 'block';
+                        }
                     }
                 }
             }
@@ -514,13 +543,14 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                 }
             }
 
-            // 任意セクター（SEC 1 ～ SEC 10）通過判定
             if (lastPos && canAccumulate) {
                 SECTOR_KEYS.forEach((key, idx) => {
                     const sLine = lines.sectors[key];
                     if (sLine && !triggeredSectors[key]) {
                         const hitSec = getIntersection(lastPos, cur, sLine);
-                        if (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000)) {
+                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
+                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                        if (sinceStartOk && sinceLastSecOk) {
                             triggeredSectors[key] = true;
                             const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
                             recordDistanceLap(hitSec.time, Math.round(totalDistanceM), secSegDist, false, `SEC${idx + 1}`);
@@ -633,8 +663,10 @@ function mainLoop() {
 document.getElementById('startBtn').onclick = function() {
     if (swState !== 1) {
         courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
+        targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
         lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
         document.getElementById('debug-intv').textContent = lapIntervalM;
+        document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
 
         swState = 1;
         startTime = Date.now();
@@ -714,7 +746,7 @@ document.getElementById('gpxBtn').onclick = async function() {
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="KLAP_MARATHON_GPS" xmlns="http://www.topografix.com/GPX/1/1">
 <metadata>
-    <desc>LAP_INTERVAL_M:${lapIntervalM}</desc>
+    <desc>LAP_INTERVAL_M:${lapIntervalM};CIRCUIT_LAPS:${targetCircuitLaps}</desc>
 </metadata>
 <trk><name>KLAP_MARATHON_${new Date().getTime()}</name>
 <trkseg>`;
@@ -815,8 +847,10 @@ function readStoredLine(key) {
 
 window.onload = () => {
     courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
+    targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
     lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
     document.getElementById('debug-intv').textContent = lapIntervalM;
+    document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
 
     ['startLine', 'goalLine', 'lapLine'].forEach(key => {
         lines[key] = readStoredLine(key);
