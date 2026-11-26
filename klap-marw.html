@@ -44,6 +44,7 @@
         footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #fff; border-top: 1px solid #ccc; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
         button { flex: 1; background: #f2f2f2; color: #000; border: 1px solid #bbb; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; }
         button.active { background: var(--hrc-red) !important; color: #fff !important; border-color: var(--hrc-red); }
+        button.paused { background: var(--hrc-orange) !important; color: #fff !important; border-color: var(--hrc-orange); }
 
         #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; color: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
         .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
@@ -87,6 +88,7 @@
     <footer>
         <button id="intGpsBtn">INT GPS</button>
         <button id="startBtn">START</button>
+        <button id="pauseBtn">PAUSE</button>
         <button id="lapBtn">LAP</button>
         <button id="historyBtn">HISTORY</button>
         <button id="analyzerBtn" onclick="location.href='analyzer.html'">ANALYZER</button>
@@ -116,8 +118,10 @@ if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
 
 'use strict';
 
-let swState = 0; // 0:待機, 1:計測中, 2:停止
+let swState = 0; // 0:待機, 1:計測中, 2:停止, 3:一時停止(PAUSE)
 let startTime = 0;
+let pauseStartTime = 0;
+let pausedAccumulatedMs = 0;
 let startLineCrossTime = null;
 let currentLapStartTime = 0;
 let lastSectorCrossTime = 0;
@@ -157,6 +161,21 @@ let currentMarker = null;
 let trackPolyline = null;
 let trackLatLngs = [];
 let mapCenteredOnce = false;
+
+// 一時停止中の累計時間を差し引いた有効タイムスタンプ（ms）
+function getEffectiveTime(rawNow = Date.now()) {
+    const activePauseMs = (swState === 3 && pauseStartTime > 0)
+        ? Math.max(0, rawNow - pauseStartTime)
+        : 0;
+    return rawNow - pausedAccumulatedMs - activePauseMs;
+}
+
+function resetPauseButtonUI() {
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (!pauseBtn) return;
+    pauseBtn.textContent = 'PAUSE';
+    pauseBtn.classList.remove('paused');
+}
 
 function syncMapAspectRatio() {
     const wrapper = document.getElementById('map-wrapper');
@@ -252,7 +271,7 @@ function updateMapPosition(lat, lon) {
     if (!mapCenteredOnce) {
         map.setView(latlng, 17);
         mapCenteredOnce = true;
-    } else if (swState === 1) {
+    } else if (swState === 1 || swState === 3) {
         map.panTo(latlng, { animate: false });
     }
 }
@@ -338,7 +357,6 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customL
         lastSectorCrossTime = hitTime;
         lastSectorCrossDistM = targetDistM;
         sectorBaseDistanceM = targetDistM;
-        // 周回コースでは1周完了ごとにセクター通過フラグをリセットし次周も計測可能にする
         if (courseMode === 'circuit') {
             triggeredSectors = {};
         }
@@ -378,7 +396,7 @@ function formatPace(secPerKm) {
     return `${min}'${sec.toString().padStart(2, '0')}"`;
 }
 
-function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null, rawAltitudeM = null) {
+function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = null, rawAltitudeM = null) {
     if (currLat === 0 && currLon === 0) return;
     document.getElementById('debug-lat').textContent = currLat.toFixed(6);
     document.getElementById('debug-lon').textContent = currLon.toFixed(6);
@@ -386,7 +404,14 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
 
     updateMapPosition(currLat, currLon);
 
-    const cur = { lat: currLat, lon: currLon, time: now };
+    // 一時停止（PAUSE）中は距離加算・軌跡記録・ライン通過判定をホールド
+    if (swState === 3) {
+        lastPos = null;
+        return;
+    }
+
+    const effNow = getEffectiveTime(rawNow);
+    const cur = { lat: currLat, lon: currLon, time: effNow };
 
     if (swState === 1) {
         if (courseMode === 'circuit' && lines.lapLine) {
@@ -429,7 +454,6 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
             }
 
             if (lastPos) {
-                // 周回中の任意セクター（SEC 1 ～ SEC 10）通過判定
                 if (canAccumulate) {
                     SECTOR_KEYS.forEach((key, idx) => {
                         const sLine = lines.sectors[key];
@@ -466,9 +490,9 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                         recordDistanceLap(hitLap.time, Math.round(totalDistanceM), segDist, false);
                         lastLapCrossTime = hitLap.time;
 
-                        // 設定周回数に到達したら自動ゴール
                         if (targetCircuitLaps > 0 && lapCounter >= targetCircuitLaps) {
                             swState = 2;
+                            resetPauseButtonUI();
                             document.getElementById('startBtn').classList.remove('active');
                             document.getElementById('gpxBtn').style.display = 'block';
                         }
@@ -565,6 +589,7 @@ function handlePositionUpdate(currLat, currLon, now, acc = 0, rawSpeedMps = null
                     const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
                     recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
                     swState = 2;
+                    resetPauseButtonUI();
                     document.getElementById('startBtn').classList.remove('active');
                     document.getElementById('gpxBtn').style.display = 'block';
                 }
@@ -626,34 +651,39 @@ function timeFormat(ms) {
 }
 
 function mainLoop() {
-    const now = Date.now();
-    if (swState === 1) {
-        document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
+    const rawNow = Date.now();
+    if (swState === 1 || swState === 3) {
+        const effNow = getEffectiveTime(rawNow);
+        const pauseTag = (swState === 3) ? " [PAUSE]" : "";
+        document.getElementById('display').textContent = "TOTAL " + timeFormat(effNow - startTime) + pauseTag;
 
         const stLapEl = document.getElementById('stline-lap');
         const hasStartLine = (courseMode === 'circuit') ? Boolean(lines.lapLine) : Boolean(lines.startLine);
         if (hasStartLine) {
             if (startTriggered && startLineCrossTime !== null) {
-                stLapEl.textContent = timeFormat(now - startLineCrossTime);
+                stLapEl.textContent = timeFormat(effNow - startLineCrossTime);
             } else {
                 stLapEl.textContent = "00:00.000";
             }
         } else {
-            stLapEl.textContent = timeFormat(now - startTime);
+            stLapEl.textContent = timeFormat(effNow - startTime);
         }
 
         const d1 = document.getElementById('display1');
-        if (isFrozen && now < freezeUntil) {
+        if (swState === 3) {
+            d1.textContent = timeFormat(effNow - (currentLapStartTime || startTime));
+            d1.style.color = "var(--hrc-orange)";
+        } else if (isFrozen && rawNow < freezeUntil) {
             d1.textContent = freezeDisplayTime;
             d1.style.color = "#000";
         } else {
-            d1.textContent = timeFormat(now - (currentLapStartTime || startTime));
+            d1.textContent = timeFormat(effNow - (currentLapStartTime || startTime));
             d1.style.color = "#000";
             isFrozen = false;
         }
     }
     const secDistM = Math.max(0, totalDistanceM - sectorBaseDistanceM);
-    document.getElementById('speed_val').textContent = Math.round(currentSpeedKmh);
+    document.getElementById('speed_val').textContent = (swState === 3) ? 0 : Math.round(currentSpeedKmh);
     document.getElementById('max_speed_val').textContent = maxSpeedInLap;
     document.getElementById('sec_dist_val').textContent = `${Math.round(secDistM)}m`;
     document.getElementById('dist_val').textContent = `${Math.round(totalDistanceM)}m`;
@@ -661,7 +691,7 @@ function mainLoop() {
 }
 
 document.getElementById('startBtn').onclick = function() {
-    if (swState !== 1) {
+    if (swState === 0 || swState === 2) {
         courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
         targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
         lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
@@ -670,6 +700,8 @@ document.getElementById('startBtn').onclick = function() {
 
         swState = 1;
         startTime = Date.now();
+        pauseStartTime = 0;
+        pausedAccumulatedMs = 0;
         startLineCrossTime = null;
         lastLapCrossTime = 0;
         currentLapStartTime = startTime;
@@ -686,26 +718,56 @@ document.getElementById('startBtn').onclick = function() {
         lastAltitudeM = null;
         validStartDirection = null;
         startTriggered = (courseMode === 'circuit') ? !lines.lapLine : !lines.startLine;
+        lastPos = null;
 
         trackLatLngs = [];
         if (trackPolyline) trackPolyline.setLatLngs([]);
 
+        resetPauseButtonUI();
         this.classList.add('active');
         document.getElementById('gpxBtn').style.display = 'none';
         document.getElementById('lap').innerHTML = '';
         document.getElementById('stline-lap').textContent = "00:00.000";
+        document.getElementById('display1').style.color = "#000";
     } else {
+        if (swState === 3 && pauseStartTime > 0) {
+            pausedAccumulatedMs += Math.max(0, Date.now() - pauseStartTime);
+            pauseStartTime = 0;
+        }
         swState = 2;
+        resetPauseButtonUI();
         this.classList.remove('active');
+        document.getElementById('display1').style.color = "#000";
         document.getElementById('gpxBtn').style.display = 'block';
+    }
+};
+
+document.getElementById('pauseBtn').onclick = function() {
+    if (swState === 1) {
+        swState = 3;
+        pauseStartTime = Date.now();
+        isFrozen = false;
+        lastPos = null;
+        this.textContent = 'RESUME';
+        this.classList.add('paused');
+    } else if (swState === 3) {
+        if (pauseStartTime > 0) {
+            pausedAccumulatedMs += Math.max(0, Date.now() - pauseStartTime);
+            pauseStartTime = 0;
+        }
+        swState = 1;
+        lastPos = null;
+        this.textContent = 'PAUSE';
+        this.classList.remove('paused');
+        document.getElementById('display1').style.color = "#000";
     }
 };
 
 document.getElementById('lapBtn').onclick = () => {
     if (swState === 1) {
-        const now = Date.now();
+        const effNow = getEffectiveTime(Date.now());
         const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
-        recordDistanceLap(now, Math.round(totalDistanceM), segDist, true);
+        recordDistanceLap(effNow, Math.round(totalDistanceM), segDist, true);
     }
 };
 
