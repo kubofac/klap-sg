@@ -721,7 +721,7 @@ function buildDistanceSectors(run) {
     }
 }
 
-// 2. 任意セクター・折り返し（S1 ～ S10 / TURN・クールダウン対応）
+// 2. 任意セクター・折り返し（折り返し設定時は通過順 S1, S2, S3... 連番）
 function buildCustomSectors(run) {
     customSectors = [];
     const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
@@ -762,6 +762,8 @@ function buildCustomSectors(run) {
     const lastHitSecByKey = {};
     let lastTurnHitSec = -999;
     let lastAnyHitSec = -999;
+    let seqCounter = 0;
+    const useSequentialTurnLabels = Boolean(gpxLines.turnLine);
 
     for (let i = 1; i < run.coords.length; i++) {
         if (gpxLines.turnLine) {
@@ -772,7 +774,8 @@ function buildCustomSectors(run) {
                     lastTurnHitSec = interpSec;
                     lastAnyHitSec = interpSec;
                     const lapNo = getLapNumberAtSec(interpSec);
-                    const label = lapNo ? `TURN(L${lapNo})` : 'TURN';
+                    const baseLabel = useSequentialTurnLabels ? `S${++seqCounter}` : 'TURN';
+                    const label = lapNo ? `${baseLabel}(L${lapNo})` : baseLabel;
                     const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hitTurn.t;
                     hits.push({
                         label,
@@ -797,7 +800,8 @@ function buildCustomSectors(run) {
 
                 const secNum = parseInt(key.replace(/\D/g, ''), 10);
                 const lapNo = getLapNumberAtSec(interpSec);
-                const label = lapNo ? `S${secNum}(L${lapNo})` : `S${secNum}`;
+                const baseLabel = useSequentialTurnLabels ? `S${++seqCounter}` : `S${secNum}`;
+                const label = lapNo ? `${baseLabel}(L${lapNo})` : baseLabel;
                 const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
 
                 hits.push({
