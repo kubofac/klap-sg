@@ -165,6 +165,7 @@ let nextLapDistanceM = 0;
 let watchId = null;
 const startCooldownMs = 5000;
 const lapCooldownMs = 5000;
+const sectorCooldownMs = 3000;
 
 let map = null;
 let currentMarker = null;
@@ -421,6 +422,8 @@ function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
     freezeUntil = Date.now() + 5000;
 
     currentLapStartTime = hitTime;
+    lastSectorCrossTime = hitTime;
+    lastSectorCrossDistM = targetDistM;
     sectorBaseDistanceM = targetDistM;
     triggeredSectors = {};
     currentLapPoints = [];
@@ -478,7 +481,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             const canAccumulate = startTriggered;
             if (canAccumulate && lastPos) {
                 const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
-                if (stepM >= 0.5 && stepM < 150) {
+                if (stepM >= 0.5 && stepM < 200) {
                     const prevTotalM = totalDistanceM;
                     const prevTime = lastPos.time;
                     totalDistanceM += stepM;
@@ -512,7 +515,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         distM: Math.round(totalDistanceM)
                     });
 
-                    // 距離設定 > 0 の場合のみ D1, D2... を独立計測
                     if (lapIntervalM > 0) {
                         while (totalDistanceM >= nextLapDistanceM) {
                             const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
@@ -529,8 +531,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                     const sLine = lines.sectors[key];
                     if (sLine && !triggeredSectors[key]) {
                         const hitSec = getIntersection(lastPos, cur, sLine);
-                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
-                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > sectorCooldownMs));
+                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
                         if (sinceStartOk && sinceLastSecOk) {
                             triggeredSectors[key] = true;
                             const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
@@ -597,7 +599,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             const canAccumulate = !lines.startLine || startTriggered;
             if (canAccumulate && lastPos) {
                 const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
-                if (stepM >= 0.5 && stepM < 150) {
+                if (stepM >= 0.5 && stepM < 200) {
                     const prevTotalM = totalDistanceM;
                     const prevTime = lastPos.time;
                     totalDistanceM += stepM;
@@ -632,7 +634,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         distM: Math.round(totalDistanceM)
                     });
 
-                    // 距離設定 > 0 の場合のみ D1, D2... を独立計測
                     if (lapIntervalM > 0) {
                         while (totalDistanceM >= nextLapDistanceM) {
                             const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
@@ -649,8 +650,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                     const sLine = lines.sectors[key];
                     if (sLine && !triggeredSectors[key]) {
                         const hitSec = getIntersection(lastPos, cur, sLine);
-                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
-                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > sectorCooldownMs));
+                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
                         if (sinceStartOk && sinceLastSecOk) {
                             triggeredSectors[key] = true;
                             const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
