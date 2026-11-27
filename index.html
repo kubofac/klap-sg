@@ -33,19 +33,19 @@
         #center-crosshair::after { left: 11px; top: 0; width: 2px; height: 24px; }
 
         .top-bar { position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; padding-top: env(safe-area-inset-top); pointer-events: none; }
-        .top-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; pointer-events: auto; }
+        .top-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; pointer-events: auto; touch-action: none; }
 
-        .ui-btn { background: rgba(255,255,255,0.95); color: #000; border: 1px solid #999; border-radius: 6px; padding: 8px 10px; font-size: 11px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        .ui-btn { background: rgba(255,255,255,0.95); color: #000; border: 1px solid #999; border-radius: 6px; padding: 8px 10px; font-size: 11px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); touch-action: manipulation; user-select: none; }
         .ui-btn.active { background: var(--hrc-red); color: #fff; border-color: var(--hrc-red); }
         .ui-btn.turn-active { background: var(--hrc-orange); color: #fff; border-color: var(--hrc-orange); }
         .ui-btn.point-active { background: #0077cc; color: #fff; border-color: #0077cc; }
         .ui-btn.primary { background: var(--hrc-red); color: #fff; border-color: var(--hrc-red); }
         .ui-btn.blue { background: #0077cc; color: #fff; border-color: #0077cc; }
 
-        .panel-box { background: rgba(255,255,255,0.95); border: 1px solid #bbb; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .panel-box { background: rgba(255,255,255,0.95); border: 1px solid #bbb; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); touch-action: manipulation; }
         .panel-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
         .panel-row:last-child { margin-bottom: 0; }
-        select, input[type="number"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; }
+        select, input[type="number"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; touch-action: manipulation; }
         input[type="number"] { width: 82px; }
 
         .status-badge { font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 4px; background: #eee; color: #222; }
@@ -60,20 +60,20 @@
 </div>
 <div id="center-crosshair"></div>
 
-<div class="top-bar">
+<div class="top-bar" id="topBar">
     <div class="top-row">
-        <button id="gpsBtn" class="ui-btn">現在地へ移動</button>
-        <button id="modeStartBtn" class="ui-btn">START</button>
-        <button id="modeGoalBtn" class="ui-btn">GOAL</button>
-        <button id="modeTurnBtn" class="ui-btn">折り返し(TURN)</button>
-        <button id="modeLapBtn" class="ui-btn">LAP</button>
-        <button id="modeSecBtn" class="ui-btn">セクター(S1-S10)</button>
-        <button id="setP1Btn" class="ui-btn point-active">P1指定</button>
-        <button id="setP2Btn" class="ui-btn">P2指定</button>
-        <button id="putP1CenterBtn" class="ui-btn">中心をP1に置く</button>
-        <button id="putP2CenterBtn" class="ui-btn">中心をP2に置く</button>
-        <button id="clearLineBtn" class="ui-btn">選択ライン消去</button>
-        <button id="clearAllBtn" class="ui-btn">全ライン消去</button>
+        <button id="gpsBtn" type="button" class="ui-btn">現在地へ移動</button>
+        <button id="modeStartBtn" type="button" class="ui-btn">START</button>
+        <button id="modeGoalBtn" type="button" class="ui-btn">GOAL</button>
+        <button id="modeTurnBtn" type="button" class="ui-btn">折り返し(TURN)</button>
+        <button id="modeLapBtn" type="button" class="ui-btn">LAP</button>
+        <button id="modeSecBtn" type="button" class="ui-btn">セクター(S1-S10)</button>
+        <button id="setP1Btn" type="button" class="ui-btn point-active">P1指定</button>
+        <button id="setP2Btn" type="button" class="ui-btn">P2指定</button>
+        <button id="putP1CenterBtn" type="button" class="ui-btn">中心をP1に置く</button>
+        <button id="putP2CenterBtn" type="button" class="ui-btn">中心をP2に置く</button>
+        <button id="clearLineBtn" type="button" class="ui-btn">選択ライン消去</button>
+        <button id="clearAllBtn" type="button" class="ui-btn">全ライン消去</button>
     </div>
 
     <div class="top-row">
@@ -100,8 +100,8 @@
                 <span id="p2CoordText" class="coord-text">P2: -</span>
                 <span id="drawGuide" class="status-badge">P1・P2を指定してください</span>
                 <span id="turnAutoHint" class="status-badge">折り返し未設定</span>
-                <button id="saveBtn" class="ui-btn primary">保存してタイマーへ</button>
-                <button id="goTimerBtn" class="ui-btn blue">タイマー画面へ</button>
+                <button id="saveBtn" type="button" class="ui-btn primary">保存してタイマーへ</button>
+                <button id="goTimerBtn" type="button" class="ui-btn blue">タイマー画面へ</button>
             </div>
         </div>
     </div>
@@ -126,6 +126,10 @@ let drawMode = 'startLine'; // 'startLine' | 'goalLine' | 'turnLine' | 'lapLine'
 let activePoint = 'p1'; // 'p1' | 'p2'
 let lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
 let renderedLayers = [];
+let activeLinePolyline = null;
+let p1EditMarker = null;
+let p2EditMarker = null;
+let isDraggingEndpoint = false;
 
 function getActiveLineKey() {
     if (drawMode === 'sector') {
@@ -241,6 +245,119 @@ function updatePointUI() {
         : 'P2: 未設定';
 }
 
+function updateCoordLabelsOnly(line) {
+    const p1El = document.getElementById('p1CoordText');
+    const p2El = document.getElementById('p2CoordText');
+    p1El.textContent = (line && line.p1)
+        ? `P1: ${line.p1.lat.toFixed(6)}, ${line.p1.lon.toFixed(6)}`
+        : 'P1: 未設定';
+    p2El.textContent = (line && line.p2)
+        ? `P2: ${line.p2.lat.toFixed(6)}, ${line.p2.lon.toFixed(6)}`
+        : 'P2: 未設定';
+}
+
+function createEndpointIcon(pointName, isSelected) {
+    const bg = pointName === 'p1' ? '#E4002B' : '#0077cc';
+    const ring = isSelected ? '3px solid #ffff00' : '2px solid #ffffff';
+    return L.divIcon({
+        className: 'endpoint-pin-icon',
+        html: `<div style="width:20px;height:20px;border-radius:50%;background:${bg};border:${ring};color:#fff;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.45);user-select:none;touch-action:none;">${pointName === 'p1' ? 'P1' : 'P2'}</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+}
+
+function syncActiveEndpointEditors(line, color) {
+    if (activeLinePolyline) {
+        map.removeLayer(activeLinePolyline);
+        activeLinePolyline = null;
+    }
+    if (p1EditMarker) {
+        map.removeLayer(p1EditMarker);
+        p1EditMarker = null;
+    }
+    if (p2EditMarker) {
+        map.removeLayer(p2EditMarker);
+        p2EditMarker = null;
+    }
+
+    if (!line) return;
+
+    if (line.p1 && line.p2) {
+        activeLinePolyline = L.polyline(
+            [[line.p1.lat, line.p1.lon], [line.p2.lat, line.p2.lon]],
+            { color, weight: 5, opacity: 0.95, interactive: false }
+        ).addTo(map);
+    }
+
+    const bindEndpointDrag = (marker, ptKey) => {
+        marker.on('mousedown touchstart', (ev) => {
+            L.DomEvent.stopPropagation(ev);
+            activePoint = ptKey;
+            isDraggingEndpoint = true;
+            map.dragging.disable();
+            updatePointUI();
+        });
+        marker.on('dragstart', () => {
+            isDraggingEndpoint = true;
+            map.dragging.disable();
+        });
+        marker.on('drag', (ev) => {
+            const latlng = ev.target.getLatLng();
+            const key = getActiveLineKey();
+            const cur = getLineByKey(key) || { p1: null, p2: null };
+            const updated = {
+                p1: cur.p1 ? { ...cur.p1 } : null,
+                p2: cur.p2 ? { ...cur.p2 } : null
+            };
+            updated[ptKey] = { lat: latlng.lat, lon: latlng.lng };
+            setLineByKey(key, updated);
+            if (updated.p1 && updated.p2 && activeLinePolyline) {
+                activeLinePolyline.setLatLngs([[updated.p1.lat, updated.p1.lon], [updated.p2.lat, updated.p2.lon]]);
+            }
+            updateCoordLabelsOnly(updated);
+        });
+        marker.on('dragend', (ev) => {
+            const latlng = ev.target.getLatLng();
+            const key = getActiveLineKey();
+            const cur = getLineByKey(key) || { p1: null, p2: null };
+            const updated = {
+                p1: cur.p1 ? { ...cur.p1 } : null,
+                p2: cur.p2 ? { ...cur.p2 } : null
+            };
+            updated[ptKey] = { lat: latlng.lat, lon: latlng.lng };
+            setLineByKey(key, updated);
+            isDraggingEndpoint = false;
+            map.dragging.enable();
+            if (updated.p1 && updated.p2 && (key === 'turnLine' || key.startsWith('sec'))) {
+                applyTurnReturnRules(true);
+            }
+            updatePointUI();
+            redrawLines();
+        });
+    };
+
+    if (line.p1) {
+        p1EditMarker = L.marker([line.p1.lat, line.p1.lon], {
+            draggable: true,
+            autoPan: false,
+            zIndexOffset: 900,
+            icon: createEndpointIcon('p1', activePoint === 'p1')
+        }).addTo(map);
+        bindEndpointDrag(p1EditMarker, 'p1');
+    }
+
+    if (line.p2) {
+        p2EditMarker = L.marker([line.p2.lat, line.p2.lon], {
+            draggable: true,
+            autoPan: false,
+            zIndexOffset: 900,
+            icon: createEndpointIcon('p2', activePoint === 'p2')
+        }).addTo(map);
+        bindEndpointDrag(p2EditMarker, 'p2');
+    }
+}
+
 function setPointCoord(lat, lon, targetPoint = activePoint) {
     const key = getActiveLineKey();
     const current = getLineByKey(key) || { p1: null, p2: null };
@@ -268,44 +385,41 @@ function setPointCoord(lat, lon, targetPoint = activePoint) {
     document.getElementById('drawGuide').textContent = `${name} の ${targetPoint.toUpperCase()} を更新しました`;
 }
 
+function getLineColor(key) {
+    if (key === 'startLine') return '#E4002B';
+    if (key === 'goalLine') return '#28a745';
+    if (key === 'turnLine') return '#D96B00';
+    if (key === 'lapLine') return '#9c27b0';
+    return '#00838f';
+}
+
 function redrawLines() {
     renderedLayers.forEach(layer => map.removeLayer(layer));
     renderedLayers = [];
 
-    const drawLineAndPoints = (line, color, label, dashArray = null) => {
-        if (!line) return;
-        if (line.p1 && line.p2) {
-            const poly = L.polyline(
-                [[line.p1.lat, line.p1.lon], [line.p2.lat, line.p2.lon]],
-                { color, weight: 4, dashArray }
-            ).addTo(map);
-            poly.bindTooltip(label, { permanent: true, direction: 'center' });
-            renderedLayers.push(poly);
-        }
-        if (line.p1) {
-            const m1 = L.circleMarker([line.p1.lat, line.p1.lon], {
-                radius: 5, color: '#000', weight: 1.5, fillColor: color, fillOpacity: 1
-            }).addTo(map);
-            m1.bindTooltip(`${label} P1`, { permanent: false, direction: 'top' });
-            renderedLayers.push(m1);
-        }
-        if (line.p2) {
-            const m2 = L.circleMarker([line.p2.lat, line.p2.lon], {
-                radius: 5, color: '#fff', weight: 1.5, fillColor: '#0077cc', fillOpacity: 1
-            }).addTo(map);
-            m2.bindTooltip(`${label} P2`, { permanent: false, direction: 'top' });
-            renderedLayers.push(m2);
-        }
+    const activeKey = getActiveLineKey();
+
+    const drawOtherLine = (key, line, color, label, dashArray = null) => {
+        if (!line || !line.p1 || !line.p2 || key === activeKey) return;
+        const poly = L.polyline(
+            [[line.p1.lat, line.p1.lon], [line.p2.lat, line.p2.lon]],
+            { color, weight: 4, dashArray, opacity: 0.85, interactive: false }
+        ).addTo(map);
+        poly.bindTooltip(label, { permanent: true, direction: 'center' });
+        renderedLayers.push(poly);
     };
 
-    drawLineAndPoints(lines.startLine, '#E4002B', 'START');
-    drawLineAndPoints(lines.goalLine, '#28a745', 'GOAL');
-    drawLineAndPoints(lines.turnLine, '#D96B00', 'TURN');
-    drawLineAndPoints(lines.lapLine, '#9c27b0', 'LAP');
+    drawOtherLine('startLine', lines.startLine, getLineColor('startLine'), 'START');
+    drawOtherLine('goalLine', lines.goalLine, getLineColor('goalLine'), 'GOAL');
+    drawOtherLine('turnLine', lines.turnLine, getLineColor('turnLine'), 'TURN');
+    drawOtherLine('lapLine', lines.lapLine, getLineColor('lapLine'), 'LAP');
 
     SECTOR_KEYS.forEach((key, idx) => {
-        drawLineAndPoints(lines.sectors[key], '#00838f', `S${idx + 1}`, '5, 5');
+        drawOtherLine(key, lines.sectors[key], getLineColor(key), `S${idx + 1}`, '5, 5');
     });
+
+    const activeLine = getLineByKey(activeKey);
+    syncActiveEndpointEditors(activeLine, getLineColor(activeKey));
 }
 
 function setDrawMode(mode) {
@@ -325,8 +439,9 @@ function setDrawMode(mode) {
         lapLine: 'LAPライン',
     };
     const name = labelMap[activeKey] || activeKey.replace('sec', 'S').replace('Line', 'ライン');
-    document.getElementById('drawGuide').textContent = `${name} の ${activePoint.toUpperCase()} を地図タップまたは中心配置で指定してください`;
+    document.getElementById('drawGuide').textContent = `${name} の ${activePoint.toUpperCase()} をピン拖动・中心配置・地図タップで指定できます`;
     updatePointUI();
+    redrawLines();
 }
 
 function syncCourseModeUI() {
@@ -387,8 +502,18 @@ function saveAllSettings() {
     localStorage.setItem('klap_circuit_laps', String(cLaps));
 }
 
+function guardTopBarEvents() {
+    const topBar = document.getElementById('topBar');
+    ['mousedown', 'touchstart', 'pointerdown'].forEach(evtName => {
+        topBar.addEventListener(evtName, (e) => {
+            e.stopPropagation();
+        }, { passive: true });
+    });
+}
+
 window.onload = () => {
     initSelectorOptions();
+    guardTopBarEvents();
 
     map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 16);
     L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
@@ -397,46 +522,53 @@ window.onload = () => {
     }).addTo(map);
 
     map.on('click', (e) => {
+        if (isDraggingEndpoint) return;
         setPointCoord(e.latlng.lat, e.latlng.lng, activePoint);
     });
 
-    document.getElementById('setP1Btn').onclick = () => {
+    document.getElementById('setP1Btn').onclick = (e) => {
+        e.stopPropagation();
         activePoint = 'p1';
         setDrawMode(drawMode);
     };
-    document.getElementById('setP2Btn').onclick = () => {
+    document.getElementById('setP2Btn').onclick = (e) => {
+        e.stopPropagation();
         activePoint = 'p2';
         setDrawMode(drawMode);
     };
 
-    document.getElementById('putP1CenterBtn').onclick = () => {
+    document.getElementById('putP1CenterBtn').onclick = (e) => {
+        e.stopPropagation();
         const c = map.getCenter();
         activePoint = 'p1';
         setPointCoord(c.lat, c.lng, 'p1');
     };
-    document.getElementById('putP2CenterBtn').onclick = () => {
+    document.getElementById('putP2CenterBtn').onclick = (e) => {
+        e.stopPropagation();
         const c = map.getCenter();
         activePoint = 'p2';
         setPointCoord(c.lat, c.lng, 'p2');
     };
 
-    document.getElementById('gpsBtn').onclick = () => {
+    document.getElementById('gpsBtn').onclick = (e) => {
+        e.stopPropagation();
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition(pos => {
             map.setView([pos.coords.latitude, pos.coords.longitude], 17);
         }, () => {}, { enableHighAccuracy: true });
     };
 
-    document.getElementById('modeStartBtn').onclick = () => setDrawMode('startLine');
-    document.getElementById('modeGoalBtn').onclick = () => setDrawMode('goalLine');
-    document.getElementById('modeTurnBtn').onclick = () => setDrawMode('turnLine');
-    document.getElementById('modeLapBtn').onclick = () => setDrawMode('lapLine');
-    document.getElementById('modeSecBtn').onclick = () => setDrawMode('sector');
+    document.getElementById('modeStartBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('startLine'); };
+    document.getElementById('modeGoalBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('goalLine'); };
+    document.getElementById('modeTurnBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('turnLine'); };
+    document.getElementById('modeLapBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('lapLine'); };
+    document.getElementById('modeSecBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('sector'); };
     document.getElementById('sectorNumSelect').onchange = () => {
         if (drawMode === 'sector') setDrawMode('sector');
     };
 
-    document.getElementById('clearLineBtn').onclick = () => {
+    document.getElementById('clearLineBtn').onclick = (e) => {
+        e.stopPropagation();
         const key = getActiveLineKey();
         setLineByKey(key, null);
         saveLineToStorage(key, null);
@@ -445,7 +577,8 @@ window.onload = () => {
         redrawLines();
     };
 
-    document.getElementById('clearAllBtn').onclick = () => {
+    document.getElementById('clearAllBtn').onclick = (e) => {
+        e.stopPropagation();
         lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
         ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(k => saveLineToStorage(k, null));
         SECTOR_KEYS.forEach(k => saveLineToStorage(k, null));
@@ -456,12 +589,14 @@ window.onload = () => {
 
     document.getElementById('courseModeSelect').onchange = syncCourseModeUI;
 
-    document.getElementById('saveBtn').onclick = () => {
+    document.getElementById('saveBtn').onclick = (e) => {
+        e.stopPropagation();
         saveAllSettings();
         location.href = 'klap-marw.html';
     };
 
-    document.getElementById('goTimerBtn').onclick = () => {
+    document.getElementById('goTimerBtn').onclick = (e) => {
+        e.stopPropagation();
         saveAllSettings();
         location.href = 'klap-marw.html';
     };
