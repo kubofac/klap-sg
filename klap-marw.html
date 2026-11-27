@@ -128,7 +128,7 @@ let distLapCounter = 0;
 let lastDistanceLapTime = 0;
 let distanceBaseM = 0;
 
-// 任意セクター・折り返し（S1... / TURN）独立管理用
+// 任意セクター・折り返し（S1...）独立管理用
 let lastSectorCrossTime = 0;
 let lastSectorCrossDistM = 0;
 
@@ -157,6 +157,7 @@ let lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, se
 let hasAnySectorLine = false;
 let triggeredSectors = {}; // 永久ロック用
 let turnTriggered = false; // 折り返しライン永久ロック用
+let seqSectorCounter = 0; // 折り返し連番用（S1, S2, S3...）
 let validStartDirection = null;
 let startTriggered = false;
 
@@ -435,6 +436,7 @@ function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
     sectorBaseDistanceM = targetDistM;
     triggeredSectors = {};
     turnTriggered = false;
+    seqSectorCounter = 0;
     currentLapPoints = [];
     maxSpeedInLap = 0;
 }
@@ -570,6 +572,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
                             triggeredSectors = {};
                             turnTriggered = false;
+                            seqSectorCounter = 0;
                         }
                     } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
                         const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
@@ -656,7 +659,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             }
 
             if (lastPos && canAccumulate) {
-                // 折り返しライン（TURN）通過判定（永久ロック）
+                // 折り返しライン（TURN）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
                 if (lines.turnLine && !turnTriggered) {
                     const hitTurn = getIntersection(lastPos, cur, lines.turnLine);
                     const sinceStartOk = (hitTurn && (hitTurn.time - (startLineCrossTime || startTime) > sectorCooldownMs));
@@ -664,11 +667,12 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                     if (sinceStartOk && sinceLastSecOk) {
                         turnTriggered = true;
                         const turnSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
-                        recordCustomSectorLap(hitTurn.time, Math.round(totalDistanceM), turnSegDist, 'TURN');
+                        const labelName = lines.turnLine ? `S${++seqSectorCounter}` : 'TURN';
+                        recordCustomSectorLap(hitTurn.time, Math.round(totalDistanceM), turnSegDist, labelName);
                     }
                 }
 
-                // 任意セクター（S1〜S10）通過判定（永久ロック）
+                // 任意セクター（S1〜S10）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
                 if (hasAnySectorLine) {
                     SECTOR_KEYS.forEach((key, idx) => {
                         const sLine = lines.sectors[key];
@@ -679,7 +683,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             if (sinceStartOk && sinceLastSecOk) {
                                 triggeredSectors[key] = true;
                                 const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
-                                recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, `S${idx + 1}`);
+                                const labelName = lines.turnLine ? `S${++seqSectorCounter}` : `S${idx + 1}`;
+                                recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, labelName);
                             }
                         }
                     });
@@ -816,6 +821,7 @@ document.getElementById('startBtn').onclick = function() {
         lastSectorCrossDistM = 0;
         triggeredSectors = {};
         turnTriggered = false;
+        seqSectorCounter = 0;
         lapRecords = [];
         distLapCounter = 0;
         circuitLapCounter = 0;
