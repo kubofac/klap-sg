@@ -24,14 +24,13 @@
 
         .right-section-wrapper { position: fixed; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
         #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
-        #lap { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; pointer-events: auto; text-align: right; color: #000; }
+        #lap { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; pointer-events: auto; text-align: right; color: #000; font-weight: normal; }
 
-        .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid #ddd; font-size: 2.6vw; white-space: nowrap; min-width: 0; }
+        .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid #ddd; font-size: 2.6vw; font-weight: normal; white-space: nowrap; min-width: 0; }
         .lap-row span:first-child { color: #555; font-weight: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-        .lap-row span:last-child { font-family: 'Arial Black', sans-serif; text-align: right; color: #000; flex-shrink: 0; }
-        .best-lap { color: var(--hrc-red) !important; }
-        .best-lap span:last-child { color: var(--hrc-red) !important; }
-        .sector-row span:first-child { color: #00838f; font-weight: bold; }
+        .lap-row span:last-child { font-family: 'Arial', sans-serif; font-weight: normal; text-align: right; color: #000; flex-shrink: 0; }
+        .best-lap span:last-child { color: var(--hrc-red); }
+        .sector-row span:first-child { color: #00838f; font-weight: normal; }
 
         .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
@@ -48,9 +47,9 @@
 
         #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; color: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
         .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
-        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #000; }
-        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; }
-        #history-table td { padding: 8px; border-bottom: 1px solid #ddd; color: #000; }
+        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #000; font-weight: normal; }
+        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; font-weight: bold; }
+        #history-table td { padding: 8px; border-bottom: 1px solid #ddd; color: #000; font-weight: normal; }
     </style>
 </head>
 <body>
@@ -82,7 +81,7 @@
     </div>
 
     <div id="debug-info">
-        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">1000</span>m | LAPS: <span id="debug-laps">∞</span>
+        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">0</span>m | LAPS: <span id="debug-laps">∞</span>
     </div>
 
     <footer>
@@ -123,9 +122,22 @@ let startTime = 0;
 let pauseStartTime = 0;
 let pausedAccumulatedMs = 0;
 let startLineCrossTime = null;
-let currentLapStartTime = 0;
+
+// 距離ラップ（D1, D2...）独立管理用
+let distLapCounter = 0;
+let lastDistanceLapTime = 0;
+let distanceBaseM = 0;
+
+// 任意セクター（S1, S2...）独立管理用
 let lastSectorCrossTime = 0;
 let lastSectorCrossDistM = 0;
+
+// 周回ラップ（L1, L2...）管理用
+let circuitLapCounter = 0;
+let currentLapStartTime = 0;
+let lastLapCrossTime = 0;
+let sectorBaseDistanceM = 0;
+
 let lapRecords = [];
 
 let currentSpeedKmh = 0;
@@ -142,17 +154,15 @@ let courseMode = 'marathon'; // 'marathon' | 'circuit'
 let targetCircuitLaps = 0; // 0 = 無制限
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
 let lines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
+let hasAnySectorLine = false;
 let triggeredSectors = {};
 let validStartDirection = null;
 let startTriggered = false;
-let lastLapCrossTime = 0;
 
-let lapIntervalM = 1000;
+let lapIntervalM = 0; // 0なら自動距離ラップ（D1...）なし
 let totalDistanceM = 0;
-let sectorBaseDistanceM = 0;
-let nextLapDistanceM = 1000;
+let nextLapDistanceM = 0;
 let watchId = null;
-let lapCounter = 0;
 const startCooldownMs = 5000;
 const lapCooldownMs = 5000;
 
@@ -162,7 +172,6 @@ let trackPolyline = null;
 let trackLatLngs = [];
 let mapCenteredOnce = false;
 
-// 一時停止中の累計時間を差し引いた有効タイムスタンプ（ms）
 function getEffectiveTime(rawNow = Date.now()) {
     const activePauseMs = (swState === 3 && pauseStartTime > 0)
         ? Math.max(0, rawNow - pauseStartTime)
@@ -305,30 +314,21 @@ function getIntersection(p1, p2, line) {
     return null;
 }
 
-function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customLabel = null) {
-    const isCheckpointSector = Boolean(customLabel);
-    const baseTime = isCheckpointSector
-        ? (lastSectorCrossTime || startLineCrossTime || startTime)
-        : (currentLapStartTime || startTime);
+// 距離ラップ（D1, D2...）記録：距離間のタイムのみ算出
+function recordDistanceSegmentLap(hitTime, targetDistM, segDistanceM, isManual) {
+    const baseTime = lastDistanceLapTime || startLineCrossTime || startTime;
     const lapMs = Math.max(0, hitTime - baseTime);
     const splitBase = startLineCrossTime || startTime;
     const splitMs = Math.max(0, hitTime - splitBase);
 
-    const completedLapNo = isCheckpointSector ? null : (lapCounter + 1);
-    if (!isCheckpointSector) {
-        lapCounter++;
-    }
+    distLapCounter++;
     const distKm = Math.max(0.001, segDistanceM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
-    const displayLabel = isCheckpointSector
-        ? (completedLapNo ? `${customLabel}(L${completedLapNo})` : customLabel)
-        : null;
-
     const record = {
-        no: completedLapNo || lapCounter,
-        label: displayLabel,
-        isSector: isCheckpointSector,
+        no: distLapCounter,
+        label: `D${distLapCounter}(${Math.round(targetDistM)}m)`,
+        kind: 'distance',
         targetDistM: Math.round(targetDistM),
         segDistanceM: Math.round(segDistanceM),
         splitMs: splitMs,
@@ -340,7 +340,6 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customL
 
     lapRecords.unshift(record);
     updateLapList();
-
     localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
 
     if (!isManual) {
@@ -349,18 +348,81 @@ function recordDistanceLap(hitTime, targetDistM, segDistanceM, isManual, customL
         freezeUntil = Date.now() + 5000;
     }
 
-    if (isCheckpointSector) {
-        lastSectorCrossTime = hitTime;
-        lastSectorCrossDistM = targetDistM;
-    } else {
-        currentLapStartTime = hitTime;
-        lastSectorCrossTime = hitTime;
-        lastSectorCrossDistM = targetDistM;
-        sectorBaseDistanceM = targetDistM;
-        if (courseMode === 'circuit') {
-            triggeredSectors = {};
-        }
-    }
+    lastDistanceLapTime = hitTime;
+    distanceBaseM = targetDistM;
+    currentLapPoints = [];
+    maxSpeedInLap = 0;
+}
+
+// 任意セクター（S1, S2...）記録：セクター間のタイムのみ算出
+function recordCustomSectorLap(hitTime, targetDistM, segDistanceM, secIndex) {
+    const baseTime = lastSectorCrossTime || startLineCrossTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
+
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const lapTag = (courseMode === 'circuit') ? `(L${circuitLapCounter + 1})` : '';
+    const label = `S${secIndex + 1}${lapTag}`;
+
+    const record = {
+        no: secIndex + 1,
+        label: `${label}(${Math.round(targetDistM)}m)`,
+        kind: 'sector',
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: []
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    lastSectorCrossTime = hitTime;
+    lastSectorCrossDistM = targetDistM;
+}
+
+// 周回ラップ（L1, L2...）記録
+function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
+    const baseTime = currentLapStartTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
+
+    circuitLapCounter++;
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const record = {
+        no: circuitLapCounter,
+        label: `L${circuitLapCounter}(${Math.round(targetDistM)}m)`,
+        kind: 'circuit',
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: [...currentLapPoints]
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    isFrozen = true;
+    freezeDisplayTime = timeFormat(lapMs);
+    freezeUntil = Date.now() + 5000;
+
+    currentLapStartTime = hitTime;
+    sectorBaseDistanceM = targetDistM;
+    triggeredSectors = {};
     currentLapPoints = [];
     maxSpeedInLap = 0;
 }
@@ -370,19 +432,18 @@ function updateLapList() {
         document.getElementById('lap').innerHTML = '';
         return;
     }
-    const normalLaps = lapRecords.filter(r => !r.isSector);
-    const best = normalLaps.length > 0
-        ? Math.min(...normalLaps.map(r => r.lapMs))
+    const lapOnly = lapRecords.filter(r => r.kind === 'circuit' || r.kind === 'distance');
+    const best = lapOnly.length > 0
+        ? Math.min(...lapOnly.map(r => r.lapMs))
         : Math.min(...lapRecords.map(r => r.lapMs));
     document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(best)}`;
 
-    const prefix = (courseMode === 'circuit') ? 'L' : 'S';
     document.getElementById('lap').innerHTML = lapRecords.map(r => {
-        const tag = r.label ? r.label : `${prefix}${r.no}`;
-        const rowClass = r.isSector ? 'sector-row' : (r.lapMs === best ? 'best-lap' : '');
+        const isSector = (r.kind === 'sector');
+        const rowClass = isSector ? 'sector-row' : (r.lapMs === best ? 'best-lap' : '');
         return `
         <div class="lap-row ${rowClass}">
-            <span>${tag}(${r.targetDistM}m)</span>
+            <span>${r.label}</span>
             <span>${timeFormat(r.lapMs)}</span>
         </div>`;
     }).join('');
@@ -404,7 +465,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
 
     updateMapPosition(currLat, currLon);
 
-    // 一時停止（PAUSE）中は距離加算・軌跡記録・ライン通過判定をホールド
     if (swState === 3) {
         lastPos = null;
         return;
@@ -419,6 +479,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             if (canAccumulate && lastPos) {
                 const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
                 if (stepM >= 0.5 && stepM < 150) {
+                    const prevTotalM = totalDistanceM;
                     const prevTime = lastPos.time;
                     totalDistanceM += stepM;
 
@@ -450,26 +511,36 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         speed: currentSpeedKmh,
                         distM: Math.round(totalDistanceM)
                     });
+
+                    // 距離設定 > 0 の場合のみ D1, D2... を独立計測
+                    if (lapIntervalM > 0) {
+                        while (totalDistanceM >= nextLapDistanceM) {
+                            const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
+                            const interpTime = prevTime + (cur.time - prevTime) * ratio;
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            nextLapDistanceM += lapIntervalM;
+                        }
+                    }
                 }
             }
 
-            if (lastPos) {
-                if (canAccumulate) {
-                    SECTOR_KEYS.forEach((key, idx) => {
-                        const sLine = lines.sectors[key];
-                        if (sLine && !triggeredSectors[key]) {
-                            const hitSec = getIntersection(lastPos, cur, sLine);
-                            const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 10000));
-                            const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 10000));
-                            if (sinceStartOk && sinceLastSecOk) {
-                                triggeredSectors[key] = true;
-                                const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
-                                recordDistanceLap(hitSec.time, Math.round(totalDistanceM), secSegDist, false, `SEC${idx + 1}`);
-                            }
+            if (lastPos && canAccumulate && hasAnySectorLine) {
+                SECTOR_KEYS.forEach((key, idx) => {
+                    const sLine = lines.sectors[key];
+                    if (sLine && !triggeredSectors[key]) {
+                        const hitSec = getIntersection(lastPos, cur, sLine);
+                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > 3000));
+                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > 3000));
+                        if (sinceStartOk && sinceLastSecOk) {
+                            triggeredSectors[key] = true;
+                            const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                            recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, idx);
                         }
-                    });
-                }
+                    }
+                });
+            }
 
+            if (lastPos) {
                 const hitLap = getIntersection(lastPos, cur, lines.lapLine);
                 if (hitLap) {
                     if (!startTriggered) {
@@ -478,19 +549,22 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             startTriggered = true;
                             startLineCrossTime = hitLap.time;
                             currentLapStartTime = hitLap.time;
+                            lastLapCrossTime = hitLap.time;
+                            lastDistanceLapTime = hitLap.time;
                             lastSectorCrossTime = hitLap.time;
                             lastSectorCrossDistM = 0;
-                            lastLapCrossTime = hitLap.time;
                             totalDistanceM = 0;
                             sectorBaseDistanceM = 0;
+                            distanceBaseM = 0;
+                            nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
                             triggeredSectors = {};
                         }
                     } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
                         const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
-                        recordDistanceLap(hitLap.time, Math.round(totalDistanceM), segDist, false);
+                        recordCircuitLap(hitLap.time, Math.round(totalDistanceM), segDist);
                         lastLapCrossTime = hitLap.time;
 
-                        if (targetCircuitLaps > 0 && lapCounter >= targetCircuitLaps) {
+                        if (targetCircuitLaps > 0 && circuitLapCounter >= targetCircuitLaps) {
                             swState = 2;
                             resetPauseButtonUI();
                             document.getElementById('startBtn').classList.remove('active');
@@ -509,11 +583,13 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         startTriggered = true;
                         startLineCrossTime = hitStart.time;
                         currentLapStartTime = hitStart.time;
+                        lastDistanceLapTime = hitStart.time;
                         lastSectorCrossTime = hitStart.time;
                         lastSectorCrossDistM = 0;
                         totalDistanceM = 0;
                         sectorBaseDistanceM = 0;
-                        nextLapDistanceM = lapIntervalM;
+                        distanceBaseM = 0;
+                        nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
                     }
                 }
             }
@@ -556,18 +632,19 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         distM: Math.round(totalDistanceM)
                     });
 
-                    while (totalDistanceM >= nextLapDistanceM) {
-                        const ratio = (nextLapDistanceM - prevTotalM) / stepM;
-                        const clampedRatio = Math.max(0, Math.min(1, ratio));
-                        const interpTime = prevTime + (cur.time - prevTime) * clampedRatio;
-
-                        recordDistanceLap(interpTime, nextLapDistanceM, lapIntervalM, false);
-                        nextLapDistanceM += lapIntervalM;
+                    // 距離設定 > 0 の場合のみ D1, D2... を独立計測
+                    if (lapIntervalM > 0) {
+                        while (totalDistanceM >= nextLapDistanceM) {
+                            const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
+                            const interpTime = prevTime + (cur.time - prevTime) * ratio;
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            nextLapDistanceM += lapIntervalM;
+                        }
                     }
                 }
             }
 
-            if (lastPos && canAccumulate) {
+            if (lastPos && canAccumulate && hasAnySectorLine) {
                 SECTOR_KEYS.forEach((key, idx) => {
                     const sLine = lines.sectors[key];
                     if (sLine && !triggeredSectors[key]) {
@@ -577,7 +654,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         if (sinceStartOk && sinceLastSecOk) {
                             triggeredSectors[key] = true;
                             const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
-                            recordDistanceLap(hitSec.time, Math.round(totalDistanceM), secSegDist, false, `SEC${idx + 1}`);
+                            recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, idx);
                         }
                     }
                 });
@@ -586,8 +663,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             if (lines.goalLine && lastPos && canAccumulate) {
                 const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
                 if (hitGoal) {
-                    const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
-                    recordDistanceLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
+                    const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+                    recordDistanceSegmentLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
                     swState = 2;
                     resetPauseButtonUI();
                     document.getElementById('startBtn').classList.remove('active');
@@ -694,7 +771,9 @@ document.getElementById('startBtn').onclick = function() {
     if (swState === 0 || swState === 2) {
         courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
         targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
-        lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+        const rawInterval = Number(localStorage.getItem('marathon_lap_interval_m'));
+        lapIntervalM = (!isNaN(rawInterval) && rawInterval > 0) ? rawInterval : 0;
+
         document.getElementById('debug-intv').textContent = lapIntervalM;
         document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
 
@@ -705,14 +784,17 @@ document.getElementById('startBtn').onclick = function() {
         startLineCrossTime = null;
         lastLapCrossTime = 0;
         currentLapStartTime = startTime;
+        lastDistanceLapTime = startTime;
         lastSectorCrossTime = startTime;
         lastSectorCrossDistM = 0;
         triggeredSectors = {};
         lapRecords = [];
-        lapCounter = 0;
+        distLapCounter = 0;
+        circuitLapCounter = 0;
         totalDistanceM = 0;
         sectorBaseDistanceM = 0;
-        nextLapDistanceM = lapIntervalM;
+        distanceBaseM = 0;
+        nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
         maxSpeedInLap = 0;
         currentLapPoints = [];
         lastAltitudeM = null;
@@ -727,6 +809,7 @@ document.getElementById('startBtn').onclick = function() {
         this.classList.add('active');
         document.getElementById('gpxBtn').style.display = 'none';
         document.getElementById('lap').innerHTML = '';
+        document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>00:00.000`;
         document.getElementById('stline-lap').textContent = "00:00.000";
         document.getElementById('display1').style.color = "#000";
     } else {
@@ -766,8 +849,8 @@ document.getElementById('pauseBtn').onclick = function() {
 document.getElementById('lapBtn').onclick = () => {
     if (swState === 1) {
         const effNow = getEffectiveTime(Date.now());
-        const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
-        recordDistanceLap(effNow, Math.round(totalDistanceM), segDist, true);
+        const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+        recordDistanceSegmentLap(effNow, Math.round(totalDistanceM), segDist, true);
     }
 };
 
@@ -776,24 +859,24 @@ document.getElementById('historyBtn').onclick = () => {
         alert("ラップ履歴がありません");
         return;
     }
-    const normalLaps = lapRecords.filter(r => !r.isSector);
-    const bT = normalLaps.length > 0
-        ? Math.min(...normalLaps.map(r => r.lapMs))
+    const lapOnly = lapRecords.filter(r => r.kind === 'circuit' || r.kind === 'distance');
+    const bT = lapOnly.length > 0
+        ? Math.min(...lapOnly.map(r => r.lapMs))
         : Math.min(...lapRecords.map(r => r.lapMs));
-    const prefix = (courseMode === 'circuit') ? 'L' : 'S';
+
     document.getElementById('history-body').innerHTML = lapRecords.map(r => {
-        const tag = r.label ? r.label : `${prefix}${r.no}`;
-        const isBest = (!r.isSector && r.lapMs === bT);
+        const isSector = (r.kind === 'sector');
+        const isBest = (!isSector && r.lapMs === bT);
         const timeStyle = isBest ? 'color:var(--hrc-red);' : '';
-        const tagStyle = r.isSector ? 'color:#00838f; font-weight:bold;' : '';
+        const tagStyle = isSector ? 'color:#00838f;' : '';
         return `
         <tr>
-            <td style="${tagStyle}">${tag}</td>
+            <td style="${tagStyle}">${r.label}</td>
             <td>${r.targetDistM}m</td>
             <td>${timeFormat(r.splitMs)}</td>
             <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
             <td>${formatPace(r.paceSecPerKm)}</td>
-            <td style="color:var(--hrc-orange); font-weight:bold;">${r.max}</td>
+            <td style="color:var(--hrc-orange);">${r.max}</td>
         </tr>`;
     }).join('');
     document.getElementById('history-page').style.display = 'block';
@@ -910,15 +993,19 @@ function readStoredLine(key) {
 window.onload = () => {
     courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
     targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
-    lapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+    const rawInterval = Number(localStorage.getItem('marathon_lap_interval_m'));
+    lapIntervalM = (!isNaN(rawInterval) && rawInterval > 0) ? rawInterval : 0;
+
     document.getElementById('debug-intv').textContent = lapIntervalM;
     document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
 
     ['startLine', 'goalLine', 'lapLine'].forEach(key => {
         lines[key] = readStoredLine(key);
     });
+    hasAnySectorLine = false;
     SECTOR_KEYS.forEach(key => {
         lines.sectors[key] = readStoredLine(key);
+        if (lines.sectors[key]) hasAnySectorLine = true;
     });
 
     initMap();
