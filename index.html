@@ -89,7 +89,7 @@
         <label>1. 走行モードとライン設定（地図上でP1・P2配置）</label>
 
         <div class="target-selector">
-            <label><input type="radio" name="courseMode" value="marathon" checked> マラソン/区間（ST・GOAL・SEC）</label>
+            <label><input type="radio" name="courseMode" value="marathon" checked> マラソン/区間（ST・GOAL・TURN・SEC）</label>
             <label><input type="radio" name="courseMode" value="circuit"> 周回コース（周回S/G・SEC・周回数）</label>
         </div>
 
@@ -100,6 +100,7 @@
         <select id="targetLineSelect">
             <option value="startLine">スタートライン（ST）</option>
             <option value="goalLine">ゴールライン（GOAL）</option>
+            <option value="turnLine">折り返しライン（TURN）</option>
             <option value="lapLine">周回S/Gライン（LAP）</option>
             <option value="sec1Line">関門・セクター 1（SEC 1）</option>
             <option value="sec2Line">関門・セクター 2（SEC 2）</option>
@@ -114,7 +115,7 @@
         </select>
 
         <div id="lineStatusSummary" class="result-text" style="color:#333;">
-            モード: マラソン | ST:-- / GOAL:-- / LAP:--<br>関門セクター: 未設定 | 周回数: 無制限
+            モード: マラソン | ST:-- / GOAL:-- / TURN:-- / LAP:--<br>関門セクター: 未設定 | 周回数: 無制限
         </div>
 
         <button class="btn-decide" id="btnDecideLine">選択中のラインを保存</button>
@@ -149,7 +150,7 @@
         <div style="margin-top: 5px; margin-bottom: 12px; padding: 12px; background: #eef7ff; border: 1px solid #bce0ff; border-radius: 8px;">
             <label style="font-weight: bold; font-size: 14px; color: #1565C0; display: block; margin-bottom: 5px;">現在の設定をコース保存</label>
             <div style="display: flex; gap: 8px;">
-                <input type="text" id="newCourseName" placeholder="例：5周レース関門あり / 河川敷1km" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="newCourseName" placeholder="例：折り返しS1-S4 / 5周レース" style="flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
                 <button onclick="saveNewCustomCourse()" style="width: auto; margin-bottom: 0; padding: 8px 14px; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">追加保存</button>
             </div>
         </div>
@@ -171,7 +172,7 @@
         const STORAGE_KEY_MODE = "klap_course_mode";
         const STORAGE_KEY_TARGET_LAPS = "klap_circuit_laps";
         const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
-        const LINE_TYPES = ['startLine', 'goalLine', 'lapLine', ...SECTOR_KEYS];
+        const LINE_TYPES = ['startLine', 'goalLine', 'turnLine', 'lapLine', ...SECTOR_KEYS];
 
         function checkPassword() {
             const inputVal = document.getElementById('passInput').value.trim();
@@ -205,6 +206,7 @@
         function getLineLabel(target) {
             if (target === 'startLine') return 'スタートライン';
             if (target === 'goalLine') return 'ゴールライン';
+            if (target === 'turnLine') return '折り返しライン';
             if (target === 'lapLine') return '周回S/Gライン';
             const m = target.match(/^sec(\d+)Line$/);
             return m ? `関門・セクター ${m[1]}` : target;
@@ -213,8 +215,54 @@
         function getLineColor(target) {
             if (target === 'startLine') return '#E4002B';
             if (target === 'goalLine') return '#28a745';
+            if (target === 'turnLine') return '#ff6d00';
             if (target === 'lapLine') return '#9c27b0';
             return '#00838f';
+        }
+
+        function readLineObj(prefix) {
+            const p1Lat = localStorage.getItem(prefix + 'P1Lat');
+            const p1Lon = localStorage.getItem(prefix + 'P1Lon');
+            const p2Lat = localStorage.getItem(prefix + 'P2Lat');
+            const p2Lon = localStorage.getItem(prefix + 'P2Lon');
+            if (!p1Lat || !p1Lon || !p2Lat || !p2Lon) return null;
+            return { p1Lat, p1Lon, p2Lat, p2Lon };
+        }
+
+        function writeLineObj(prefix, lineObj) {
+            if (lineObj && lineObj.p1Lat && lineObj.p1Lon && lineObj.p2Lat && lineObj.p2Lon) {
+                localStorage.setItem(prefix + 'P1Lat', lineObj.p1Lat);
+                localStorage.setItem(prefix + 'P1Lon', lineObj.p1Lon);
+                localStorage.setItem(prefix + 'P2Lat', lineObj.p2Lat);
+                localStorage.setItem(prefix + 'P2Lon', lineObj.p2Lon);
+            } else {
+                ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(prefix + k));
+            }
+        }
+
+        // 折り返しライン設定時：S1〜S4をS5〜S8へ逆順コピーし、GOAL未設定ならSTARTを自動反映
+        function applyTurnAutoMappings() {
+            const turn = readLineObj('turnLine');
+            if (!turn) return;
+
+            const start = readLineObj('startLine');
+            const goal = readLineObj('goalLine');
+            if (start && !goal) {
+                writeLineObj('goalLine', { ...start });
+            }
+
+            const forwardIndices = [1, 2, 3, 4].filter(n => Boolean(readLineObj(`sec${n}Line`)));
+            const reversed = [...forwardIndices].reverse();
+            reversed.forEach((srcNum, idx) => {
+                const dstNum = 5 + idx;
+                if (dstNum <= 10) {
+                    const srcLine = readLineObj(`sec${srcNum}Line`);
+                    const dstLine = readLineObj(`sec${dstNum}Line`);
+                    if (srcLine && !dstLine) {
+                        writeLineObj(`sec${dstNum}Line`, { ...srcLine });
+                    }
+                }
+            });
         }
 
         function initMap() {
@@ -357,6 +405,8 @@
             localStorage.setItem(target + 'P2Lat', p2Temp.lat);
             localStorage.setItem(target + 'P2Lon', p2Temp.lng);
 
+            applyTurnAutoMappings();
+
             p1Temp = null; p2Temp = null;
             if (p1Marker) { map.removeLayer(p1Marker); p1Marker = null; }
             if (p2Marker) { map.removeLayer(p2Marker); p2Marker = null; }
@@ -376,7 +426,7 @@
         };
 
         document.getElementById('clearAllLines').onclick = () => {
-            if (confirm("スタート・ゴール・周回・全セクターラインをすべてクリアしますか？")) {
+            if (confirm("スタート・ゴール・折り返し・周回・全セクターラインをすべてクリアしますか？")) {
                 LINE_TYPES.forEach(t => {
                     ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(t + k));
                     if (activeLines[t]) { map.removeLayer(activeLines[t]); activeLines[t] = null; }
@@ -412,31 +462,12 @@
 
         document.getElementById('btnSaveInterval').onclick = saveLapInterval;
 
-        function readLineObj(prefix) {
-            const p1Lat = localStorage.getItem(prefix + 'P1Lat');
-            const p1Lon = localStorage.getItem(prefix + 'P1Lon');
-            const p2Lat = localStorage.getItem(prefix + 'P2Lat');
-            const p2Lon = localStorage.getItem(prefix + 'P2Lon');
-            if (!p1Lat || !p1Lon || !p2Lat || !p2Lon) return null;
-            return { p1Lat, p1Lon, p2Lat, p2Lon };
-        }
-
-        function writeLineObj(prefix, lineObj) {
-            if (lineObj && lineObj.p1Lat && lineObj.p1Lon && lineObj.p2Lat && lineObj.p2Lon) {
-                localStorage.setItem(prefix + 'P1Lat', lineObj.p1Lat);
-                localStorage.setItem(prefix + 'P1Lon', lineObj.p1Lon);
-                localStorage.setItem(prefix + 'P2Lat', lineObj.p2Lat);
-                localStorage.setItem(prefix + 'P2Lon', lineObj.p2Lon);
-            } else {
-                ['P1Lat', 'P1Lon', 'P2Lat', 'P2Lon'].forEach(k => localStorage.removeItem(prefix + k));
-            }
-        }
-
         function displayStatus() {
             const mode = localStorage.getItem(STORAGE_KEY_MODE) || 'marathon';
             const modeLabel = mode === 'circuit' ? '周回コース' : 'マラソン/区間';
             const stOk = localStorage.getItem('startLineP1Lat') ? "OK" : "--";
             const glOk = localStorage.getItem('goalLineP1Lat') ? "OK" : "--";
+            const tnOk = localStorage.getItem('turnLineP1Lat') ? "OK" : "--";
             const lpOk = localStorage.getItem('lapLineP1Lat') ? "OK" : "--";
             const targetLaps = Math.max(0, Math.floor(Number(localStorage.getItem(STORAGE_KEY_TARGET_LAPS)) || 0));
             const lapsText = targetLaps > 0 ? `${targetLaps}周でゴール` : '無制限';
@@ -448,7 +479,7 @@
             const secText = activeSectors.length > 0 ? activeSectors.join(',') : '未設定';
 
             document.getElementById('lineStatusSummary').innerHTML =
-                `モード: ${modeLabel} | ST:${stOk} / GOAL:${glOk} / LAP:${lpOk}<br>関門セクター(1-10): ${secText} | 周回数: ${lapsText}`;
+                `モード: ${modeLabel} | ST:${stOk} / GOAL:${glOk} / TURN:${tnOk} / LAP:${lpOk}<br>関門セクター(1-10): ${secText} | 周回数: ${lapsText}`;
 
             const interval = Number(localStorage.getItem(STORAGE_KEY_INTERVAL));
             document.getElementById('distanceSummary').textContent =
@@ -479,6 +510,8 @@
             const name = document.getElementById('newCourseName').value.trim();
             if (!name) { alert("コース名を入力してください。"); return; }
 
+            applyTurnAutoMappings();
+
             const id = 'course_' + Date.now();
             const sectorsObj = {};
             SECTOR_KEYS.forEach(k => { sectorsObj[k] = readLineObj(k); });
@@ -494,6 +527,7 @@
                 targetLaps,
                 startLine: readLineObj('startLine'),
                 goalLine: readLineObj('goalLine'),
+                turnLine: readLineObj('turnLine'),
                 lapLine: readLineObj('lapLine'),
                 sectors: sectorsObj,
                 lapIntervalM
@@ -522,10 +556,13 @@
             localStorage.setItem(STORAGE_KEY_TARGET_LAPS, String(Math.max(0, Math.floor(Number(item.targetLaps) || 0))));
             writeLineObj('startLine', item.startLine);
             writeLineObj('goalLine', item.goalLine);
+            writeLineObj('turnLine', item.turnLine);
             writeLineObj('lapLine', item.lapLine);
             SECTOR_KEYS.forEach(k => {
                 writeLineObj(k, item.sectors ? item.sectors[k] : null);
             });
+
+            applyTurnAutoMappings();
 
             localStorage.setItem(STORAGE_KEY_INTERVAL, String(Math.max(0, Number(item.lapIntervalM) || 0)));
 
@@ -536,7 +573,7 @@
             document.getElementById('selectedCourseDisplay').textContent = item.name + " 反映完了";
 
             const firstSectorLine = item.sectors ? Object.values(item.sectors).find(Boolean) : null;
-            const focusLine = item.lapLine || item.startLine || firstSectorLine || item.goalLine;
+            const focusLine = item.lapLine || item.startLine || item.turnLine || firstSectorLine || item.goalLine;
             if (focusLine?.p1Lat && focusLine?.p1Lon) {
                 map.setView([focusLine.p1Lat, focusLine.p1Lon], 17);
             }
@@ -581,6 +618,7 @@
         window.onload = () => {
             initMap();
             loadModeFromStorage();
+            applyTurnAutoMappings();
             loadIntervalInputFromStorage();
             updateCourseSelectMenu();
             drawSavedLines();
