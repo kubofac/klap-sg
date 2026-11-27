@@ -46,7 +46,7 @@
         .panel-box { background: rgba(255,255,255,0.95); border: 1px solid #bbb; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); touch-action: manipulation; max-width: 100%; box-sizing: border-box; }
         .panel-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
         .panel-row:last-child { margin-bottom: 0; }
-        select, input[type="number"], input[type="text"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; touch-action: manipulation; }
+        select, input[type="number"], input[type="text"], input[type="password"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; touch-action: manipulation; }
         input[type="number"] { width: 82px; }
         input[type="text"] { width: 170px; }
 
@@ -54,9 +54,45 @@
         .status-badge.ok { background: #e6f7ec; color: #137333; border: 1px solid #34a853; }
         .coord-text { font-family: monospace; font-size: 10px; color: #333; background: #f7f7f7; padding: 3px 6px; border-radius: 4px; border: 1px solid #ddd; }
         .my-course-box { background: #eef7ff; border: 1px solid #bce0ff; border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+        #authLockOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 20000;
+            background: rgba(0, 0, 0, 0.92);
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .auth-card {
+            background: #fff;
+            color: #000;
+            border-radius: 10px;
+            padding: 20px;
+            width: 100%;
+            max-width: 320px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+            text-align: center;
+        }
+        .auth-card h3 { margin: 0 0 8px; font-size: 16px; }
+        .auth-card p { margin: 0 0 12px; font-size: 12px; color: #444; }
+        .auth-card input[type="password"] { width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 14px; margin-bottom: 10px; }
+        .auth-error { color: var(--hrc-red); font-size: 12px; font-weight: bold; min-height: 18px; margin-bottom: 8px; }
     </style>
 </head>
 <body>
+
+<div id="authLockOverlay">
+    <div class="auth-card">
+        <h3>KLAP パスワード認証</h3>
+        <p>設定画面を利用するにはパスワードが必要です。</p>
+        <input type="password" id="authPassInput" placeholder="パスワードを入力">
+        <div id="authErrorMsg" class="auth-error"></div>
+        <button id="authSubmitBtn" type="button" class="ui-btn primary" style="width:100%; padding:10px; font-size:13px;">認証する</button>
+    </div>
+</div>
 
 <div id="map-container">
     <div id="map"></div>
@@ -129,13 +165,55 @@
 <script>
 'use strict';
 
-if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
+const AUTH_KEY = 'klap_auth_v1';
+const AUTH_TOKEN = "a2xhcDIwMjY=";
+let appInitialized = false;
+
+function isAuthenticated() {
+    return localStorage.getItem(AUTH_KEY) === AUTH_TOKEN;
+}
+
+function showAuthLock(errorText = '') {
+    const overlay = document.getElementById('authLockOverlay');
+    const errEl = document.getElementById('authErrorMsg');
+    const inputEl = document.getElementById('authPassInput');
+    overlay.style.display = 'flex';
+    errEl.textContent = errorText;
+    if (inputEl) {
+        inputEl.focus();
+    }
+}
+
+function hideAuthLock() {
+    document.getElementById('authLockOverlay').style.display = 'none';
+    document.getElementById('authErrorMsg').textContent = '';
+}
+
+function verifyPasswordInput() {
+    const inputEl = document.getElementById('authPassInput');
+    const pass = (inputEl ? inputEl.value : '').trim();
+    if (pass === "klap2026") {
+        localStorage.setItem(AUTH_KEY, AUTH_TOKEN);
+        hideAuthLock();
+        initializeAppOnce();
+    } else {
+        showAuthLock("パスワードが異なります。再入力してください。");
+    }
+}
+
+function ensureAuthOrLock() {
+    if (isAuthenticated()) {
+        hideAuthLock();
+        return true;
+    }
     const pass = prompt("KLAP パスワードを入力してください:");
     if (pass === "klap2026") {
-        localStorage.setItem('klap_auth_v1', "a2xhcDIwMjY=");
-    } else {
-        alert("パスワードが異なります。");
+        localStorage.setItem(AUTH_KEY, AUTH_TOKEN);
+        hideAuthLock();
+        return true;
     }
+    showAuthLock("パスワードが異なります。正しいパスワードを入力してください。");
+    return false;
 }
 
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
@@ -371,6 +449,7 @@ function syncActiveEndpointEditors(line, color) {
 }
 
 function setPointCoord(lat, lon, targetPoint = activePoint) {
+    if (!isAuthenticated()) return;
     const key = getActiveLineKey();
     const current = getLineByKey(key) || { p1: null, p2: null };
     const next = {
@@ -506,6 +585,7 @@ function updateCourseSelectMenu(selectedId = '') {
 }
 
 function saveNewCustomCourse() {
+    if (!isAuthenticated()) return;
     const nameInput = document.getElementById('newCourseName');
     const name = nameInput.value.trim();
     if (!name) {
@@ -550,6 +630,7 @@ function saveNewCustomCourse() {
 }
 
 function applySelectedCustomCourse() {
+    if (!isAuthenticated()) return;
     const id = document.getElementById('courseSelect').value;
     if (!id) {
         alert("反映するマイコースを選択してください。");
@@ -594,6 +675,7 @@ function applySelectedCustomCourse() {
 }
 
 function deleteSelectedCustomCourse() {
+    if (!isAuthenticated()) return;
     const selectEl = document.getElementById('courseSelect');
     const id = selectEl.value;
     if (!id) return;
@@ -629,6 +711,7 @@ function loadSavedState() {
 }
 
 function saveAllSettings() {
+    if (!isAuthenticated()) return;
     applyTurnReturnRules(false);
 
     ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(key => {
@@ -658,7 +741,10 @@ function guardTopBarEvents() {
     });
 }
 
-window.onload = () => {
+function initializeAppOnce() {
+    if (appInitialized || !isAuthenticated()) return;
+    appInitialized = true;
+
     initSelectorOptions();
     guardTopBarEvents();
 
@@ -669,7 +755,7 @@ window.onload = () => {
     }).addTo(map);
 
     map.on('click', (e) => {
-        if (isDraggingEndpoint) return;
+        if (!isAuthenticated() || isDraggingEndpoint) return;
         setPointCoord(e.latlng.lat, e.latlng.lng, activePoint);
     });
 
@@ -721,6 +807,7 @@ window.onload = () => {
 
     document.getElementById('clearLineBtn').onclick = (e) => {
         e.stopPropagation();
+        if (!isAuthenticated()) return;
         const key = getActiveLineKey();
         setLineByKey(key, null);
         saveLineToStorage(key, null);
@@ -731,6 +818,7 @@ window.onload = () => {
 
     document.getElementById('clearAllBtn').onclick = (e) => {
         e.stopPropagation();
+        if (!isAuthenticated()) return;
         lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
         ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(k => saveLineToStorage(k, null));
         SECTOR_KEYS.forEach(k => saveLineToStorage(k, null));
@@ -744,17 +832,28 @@ window.onload = () => {
     document.getElementById('saveBtn').onclick = (e) => {
         e.stopPropagation();
         saveAllSettings();
-        location.href = 'klap-marw.html';
+        if (isAuthenticated()) location.href = 'klap-marw.html';
     };
 
     document.getElementById('goTimerBtn').onclick = (e) => {
         e.stopPropagation();
         saveAllSettings();
-        location.href = 'klap-marw.html';
+        if (isAuthenticated()) location.href = 'klap-marw.html';
     };
 
     loadSavedState();
     setDrawMode('startLine');
+}
+
+window.onload = () => {
+    document.getElementById('authSubmitBtn').onclick = verifyPasswordInput;
+    document.getElementById('authPassInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') verifyPasswordInput();
+    });
+
+    if (ensureAuthOrLock()) {
+        initializeAppOnce();
+    }
 };
 
 if ('serviceWorker' in navigator) {
