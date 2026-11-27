@@ -263,7 +263,7 @@ let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
 let latOffset = 0, lonOffset = 0;
 let gpxLapIntervalM = 0;
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
-let gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
+let gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
 const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
 const SECTOR_COOLDOWN_SEC = 3.0;
 const LAP_COOLDOWN_SEC = 5.0;
@@ -352,7 +352,7 @@ document.getElementById('fileInput').onchange = e => {
         distanceSectors = [];
         customSectors = [];
         circuitLaps = [];
-        gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
+        gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
         window.isMapInit = false;
         currentFrame = 0;
         idxA = null;
@@ -403,7 +403,7 @@ function updateModeTabs() {
     if (analysisMode === 'circuit') {
         titleEl.textContent = 'CIRCUIT LAPS (LAP LINE)';
     } else if (analysisMode === 'sector') {
-        titleEl.textContent = 'CUSTOM SECTORS (S1 - S10)';
+        titleEl.textContent = 'CUSTOM SECTORS (S1 - S10 / TURN)';
     } else {
         titleEl.textContent = 'DISTANCE SECTORS (START → GOAL)';
     }
@@ -488,8 +488,13 @@ function loadStoredLineFallback(key) {
     return null;
 }
 
+function cloneCoordLine(line) {
+    if (!line) return null;
+    return { p1: [...line.p1], p2: [...line.p2] };
+}
+
 function processFullRunGPX(xml) {
-    gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
+    gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
     const trks = xml.getElementsByTagName('trk');
     let pts = [];
     let hasLineTrackInGpx = false;
@@ -500,7 +505,7 @@ function processFullRunGPX(xml) {
         const trkPts = trks[t].getElementsByTagName('trkpt');
         const secMatch = trkName.match(/^SEC(\d+)_LINE$/);
 
-        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'LAP_LINE' || secMatch) {
+        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'TURN_LINE' || trkName === 'LAP_LINE' || secMatch) {
             hasLineTrackInGpx = true;
             if (trkPts.length >= 2) {
                 const p1Lat = parseFloat(trkPts[0].getAttribute('lat'));
@@ -511,6 +516,7 @@ function processFullRunGPX(xml) {
                     const lineData = { p1: [p1Lat, p1Lon], p2: [p2Lat, p2Lon] };
                     if (trkName === 'START_LINE') gpxLines.startLine = lineData;
                     if (trkName === 'GOAL_LINE') gpxLines.goalLine = lineData;
+                    if (trkName === 'TURN_LINE') gpxLines.turnLine = lineData;
                     if (trkName === 'LAP_LINE') gpxLines.lapLine = lineData;
                     if (secMatch) {
                         const secNum = parseInt(secMatch[1], 10);
@@ -528,9 +534,26 @@ function processFullRunGPX(xml) {
     if (!hasLineTrackInGpx) {
         gpxLines.startLine = loadStoredLineFallback('startLine');
         gpxLines.goalLine = loadStoredLineFallback('goalLine');
+        gpxLines.turnLine = loadStoredLineFallback('turnLine');
         gpxLines.lapLine = loadStoredLineFallback('lapLine');
         SECTOR_KEYS.forEach(k => {
             gpxLines.sectors[k] = loadStoredLineFallback(k);
+        });
+    }
+
+    // 折り返しライン設定時：GOAL未設定ならSTARTを自動反映し、S1〜S4をS5〜S8へ逆順補完
+    if (gpxLines.turnLine) {
+        if (!gpxLines.goalLine && gpxLines.startLine) {
+            gpxLines.goalLine = cloneCoordLine(gpxLines.startLine);
+        }
+        const forwardIndices = [1, 2, 3, 4].filter(n => Boolean(gpxLines.sectors[`sec${n}Line`]));
+        const reversed = [...forwardIndices].reverse();
+        reversed.forEach((srcNum, idx) => {
+            const dstNum = 5 + idx;
+            const dstKey = `sec${dstNum}Line`;
+            if (dstNum <= 10 && !gpxLines.sectors[dstKey]) {
+                gpxLines.sectors[dstKey] = cloneCoordLine(gpxLines.sectors[`sec${srcNum}Line`]);
+            }
         });
     }
 
@@ -698,11 +721,11 @@ function buildDistanceSectors(run) {
     }
 }
 
-// 2. 任意セクター（S1 ～ S10・周回ごとの再通過＆クールダウン対応）
+// 2. 任意セクター・折り返し（S1 ～ S10 / TURN・クールダウン対応）
 function buildCustomSectors(run) {
     customSectors = [];
     const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
-    if (activeSecKeys.length === 0) return;
+    if (activeSecKeys.length === 0 && !gpxLines.turnLine) return;
 
     const lapCrossSecs = [];
     if (gpxLines.lapLine) {
@@ -737,9 +760,31 @@ function buildCustomSectors(run) {
 
     const hits = [];
     const lastHitSecByKey = {};
+    let lastTurnHitSec = -999;
     let lastAnyHitSec = -999;
 
     for (let i = 1; i < run.coords.length; i++) {
+        if (gpxLines.turnLine) {
+            const hitTurn = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.turnLine);
+            if (hitTurn) {
+                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hitTurn.t;
+                if (interpSec - lastTurnHitSec >= SECTOR_COOLDOWN_SEC && interpSec - lastAnyHitSec >= SECTOR_COOLDOWN_SEC) {
+                    lastTurnHitSec = interpSec;
+                    lastAnyHitSec = interpSec;
+                    const lapNo = getLapNumberAtSec(interpSec);
+                    const label = lapNo ? `TURN(L${lapNo})` : 'TURN';
+                    const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hitTurn.t;
+                    hits.push({
+                        label,
+                        splitSec: interpSec,
+                        targetDistM: Math.round(interpDist),
+                        endCoord: hitTurn.coord,
+                        frameIndex: i
+                    });
+                }
+            }
+        }
+
         activeSecKeys.forEach(key => {
             const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.sectors[key]);
             if (hit) {
@@ -901,7 +946,7 @@ function renderSectorList() {
         bestBox.innerText = "-";
         slowBox.innerText = "-";
         const emptyMsg = analysisMode === 'sector'
-            ? "任意セクター（S1〜S10）の通過データがありません"
+            ? "任意セクター（S1〜S10 / TURN）の通過データがありません"
             : analysisMode === 'circuit'
                 ? "周回ライン（LAP_LINE）の周回データがありません"
                 : "距離セクター設定が0m（なし）またはデータがありません";
@@ -1037,6 +1082,7 @@ function updateUI() {
     const lineConfigs = [
         { key: 'startLine', color: '#E4002B', label: 'START' },
         { key: 'goalLine',  color: '#28a745', label: 'GOAL' },
+        { key: 'turnLine',  color: '#ff6d00', label: 'TURN' },
         { key: 'lapLine',   color: '#9c27b0', label: 'S/G (LAP)' }
     ];
     lineConfigs.forEach(cfg => {
