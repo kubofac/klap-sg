@@ -3,419 +3,298 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>KLAP MARATHON ANALYZER</title>
-
     <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <title>KLAP MARATHON GPS TIMER</title>
     <style>
-        :root { --hrc-red: #ff4444; --hrc-blue: #33ccff; --hrc-purple: #e040fb; --hrc-orange: #ff9900; --hrc-yellow: #ffff00; --hrc-green: #33ff77; --hrc-cyan: #00e5ff; }
-        html, body { overflow: hidden; width: 100%; height: 100%; background: #000; margin: 0; padding: 0; font-family: sans-serif; color: #fff; position: fixed; touch-action: none; }
-        #main-container { display: flex; height: calc(100vh - 105px); width: 100%; }
-        #map { width: 35%; height: 100%; border-right: 1px solid #444; background: #111; position: relative; z-index: 1; }
-        #chart-area { width: 65%; height: 100%; background: #000; position: relative; z-index: 1; }
+        :root { --hrc-red: #D40024; --hrc-black: #000000; --bg-light: #ffffff; --hrc-orange: #D96B00; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-light); color: var(--hrc-black); font-family: 'Arial Black', sans-serif; overflow: hidden; position: fixed; }
 
-        #data-dashboard {
-            position: fixed;
-            z-index: 9999;
-            background: rgba(0,0,0,0.88);
-            border-radius: 8px;
-            border: 2px solid #666;
-            min-width: 155px;
-            touch-action: none;
-            top: 20px;
-            right: 20px;
-        }
-        .panel-header {
-            background: #333;
-            color: #fff;
-            font-size: 11px;
-            padding: 8px 10px;
-            text-align: center;
-            cursor: move;
-            border-radius: 6px 6px 0 0;
-            user-select: none;
-            font-weight: bold;
-            border-bottom: 1px solid #444;
-        }
+        .main-ui-container { position: fixed; left: 15px; bottom: calc(100% - 37.5%); width: calc(100% - 345px); max-width: 62%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; z-index: 5; pointer-events: none; box-sizing: border-box; }
+        #stline-lap { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: var(--hrc-red); }
+        #display1 { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: #000; margin-top: 1.2vh; }
 
-        #dash-content { padding: 10px; font-family: 'Courier New', monospace; font-size: 11px; pointer-events: none; }
-        .dash-grid { display: grid; grid-template-columns: 54px 1fr; gap: 8px; text-align: right; margin-bottom: 5px; align-items: center; }
-        .grid-label { text-align: left; color: #888; }
+        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 0.8vh; gap: 0.2vh; }
+        #display { font-size: 1.8vh; color: #111; font-weight: 900; line-height: 1.05; white-space: nowrap; }
+        #best-display { font-size: 3.1vh; color: #000; font-weight: 900; line-height: 0.95; margin-top: 0.2vh; white-space: nowrap; }
+        .best-label { font-size: 1.3vh; color: var(--hrc-red); margin-right: 6px; }
 
-        #map-adjust-ctrls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1000;
-            display: grid;
-            grid-template-columns: repeat(3, 35px);
-            grid-template-rows: repeat(2, 35px);
-            gap: 2px;
-            padding-top: env(safe-area-inset-top);
-        }
+        #map-wrapper { position: fixed; left: 15px; top: 42.5%; width: calc(100% - 345px); max-width: 62%; border: 1px solid #bbb; border-radius: 6px; overflow: hidden; z-index: 4; background: #eaeaea; box-sizing: border-box; }
+        #map { width: 100%; height: 100%; }
 
-        .adj-btn {
-            width: 35px;
-            height: 35px;
-            background: rgba(0,0,0,0.6);
-            color: #fff;
-            border: 1px solid rgba(255,255,255,0.5);
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-        }
+        .right-section-wrapper { position: fixed; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
+        #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
+        #lap { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; pointer-events: auto; text-align: right; color: #000; font-weight: normal; }
 
-        .sector-pin-label {
-            background: rgba(0, 0, 0, 0.85);
-            color: var(--hrc-yellow);
-            border: 1px solid var(--hrc-yellow);
-            border-radius: 3px;
-            padding: 1px 4px;
-            font-size: 10px;
-            font-weight: normal;
-            box-shadow: none;
-        }
-        .custom-sector-label {
-            background: rgba(0, 20, 28, 0.9);
-            color: var(--hrc-cyan);
-            border: 1px solid var(--hrc-cyan);
-            border-radius: 3px;
-            padding: 1px 4px;
-            font-size: 10px;
-            font-weight: normal;
-            box-shadow: none;
-        }
-        .leaflet-tooltip.sector-pin-label::before,
-        .leaflet-tooltip.custom-sector-label::before { display: none; }
+        .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid #ddd; font-size: 2.6vw; font-weight: normal; white-space: nowrap; min-width: 0; }
+        .lap-row span:first-child { color: #555; font-weight: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .lap-row span:last-child { font-family: 'Arial', sans-serif; font-weight: normal; text-align: right; color: #000; flex-shrink: 0; }
+        .best-lap span:last-child { color: var(--hrc-red); }
+        .sector-row span:first-child { color: #00838f; font-weight: normal; }
 
-        #lap-list-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 10000; flex-direction: column; padding: 15px; box-sizing: border-box; }
-        .mode-tabs {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-            margin-top: 8px;
-        }
-        .mode-tab-btn {
-            flex: 1;
-            max-width: 180px;
-            padding: 7px 6px;
-            background: #1c1c1c;
-            color: #aaa;
-            border: 1px solid #444;
-            border-radius: 5px;
-            font-size: 11px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .mode-tab-btn.active {
-            background: var(--hrc-blue);
-            color: #000;
-            border-color: var(--hrc-blue);
-        }
-        .mode-tab-btn.active-sec {
-            background: var(--hrc-cyan);
-            color: #000;
-            border-color: var(--hrc-cyan);
-        }
-        .mode-tab-btn.active-lap {
-            background: var(--hrc-purple);
-            color: #fff;
-            border-color: var(--hrc-purple);
-        }
+        .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+        .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
+        .val { font-size: 38px; font-weight: 900; line-height: 0.9; color: #000; }
+        #sec_dist_val { font-size: 22px; color: #1b8a3b; }
+        #dist_val { font-size: 24px; color: #0077cc; }
 
-        .total-run-banner {
-            background: #1a1a1a;
-            border: 1px solid var(--hrc-yellow);
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin-top: 8px;
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-        }
-        .total-run-time {
-            color: var(--hrc-yellow);
-            font-weight: bold;
-            font-size: 16px;
-            font-family: 'Courier New', monospace;
-        }
-        .sector-summary-bar {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin: 8px 0 10px;
-            font-size: 12px;
-        }
-        .summary-card {
-            background: #141414;
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 8px 10px;
-        }
-        .summary-card.best-card { border-color: var(--hrc-red); }
-        .summary-card.slow-card { border-color: var(--hrc-blue); }
+        #debug-info { position: fixed; bottom: 65px; left: 10px; font-family: monospace; font-size: 10px; color: #555; z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 3px; }
 
-        #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
-        .lap-row { display: grid; grid-template-columns: 76px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; font-weight: normal; align-items: center; }
-        .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
-        .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
-        .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
+        footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #fff; border-top: 1px solid #ccc; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
+        button { flex: 1; background: #f2f2f2; color: #000; border: 1px solid #bbb; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; }
+        button.active { background: var(--hrc-red) !important; color: #fff !important; border-color: var(--hrc-red); }
+        button.paused { background: var(--hrc-orange) !important; color: #fff !important; border-color: var(--hrc-orange); }
 
-        .lap-best { color: var(--hrc-red) !important; font-weight: normal; }
-        .lap-slow { color: var(--hrc-blue) !important; font-weight: normal; }
-        .stat-best { background: var(--hrc-orange); color: #000 !important; font-weight: normal; border-radius: 2px; }
-
-        #controls { position: fixed; bottom: 0; left: 0; width: 100%; height: 105px; background: #111; z-index: 999; padding: 5px; box-sizing: border-box; }
-        .ctrl-row { display: flex; align-items: center; gap: 5px; height: 45px; overflow-x: auto; }
-        .mini-btn { background: #444; color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; height: 35px; cursor: pointer; font-weight: bold; flex-shrink: 0; }
-        #seek-bar {
-            width: 100%;
-            height: 44px;
-            accent-color: var(--hrc-red);
-            cursor: pointer;
-            touch-action: pan-x;
-        }
+        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; color: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
+        .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
+        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #000; font-weight: normal; }
+        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; font-weight: bold; }
+        #history-table td { padding: 8px; border-bottom: 1px solid #ddd; color: #000; font-weight: normal; }
     </style>
 </head>
 <body>
 
-<div id="main-container">
-    <div id="map">
-        <div id="map-adjust-ctrls">
-            <button class="adj-btn" style="grid-column: 2; grid-row: 1;" onclick="adjustMap(0.00001, 0)">↑</button>
-            <button class="adj-btn" style="grid-column: 1; grid-row: 2;" onclick="adjustMap(0, -0.00001)">←</button>
-            <button class="adj-btn" style="grid-column: 2; grid-row: 2;" onclick="adjustMap(-0.00001, 0)">↓</button>
-            <button class="adj-btn" style="grid-column: 3; grid-row: 2;" onclick="adjustMap(0, 0.00001)">→</button>
+<div id="dashboard">
+    <div class="main-ui-container">
+        <div id="stline-lap">00:00.000</div>
+        <div id="display1">00:00.000</div>
+        <div class="sub-times">
+            <div id="display">TOTAL 00:00.000</div>
+            <div id="best-display"><span class="best-label">BEST LAP</span>00:00.000</div>
         </div>
     </div>
-    <div id="chart-area">
-        <div id="data-dashboard">
-            <div class="panel-header" id="dash-handle">✜ DRAG HERE</div>
-            <div id="dash-content">
-                <div class="dash-grid"><span class="grid-label">TIME</span><span id="p-time">0:00.00</span></div>
-                <div class="dash-grid"><span class="grid-label">SPD</span><span id="p-spd">0</span></div>
-                <div class="dash-grid"><span class="grid-label">ELEV</span><span id="p-ele">0.0m</span></div>
-                <div class="dash-grid"><span class="grid-label">DIST</span><span id="p-dist">0m</span></div>
-                <hr style="border:0; border-top:1px solid #333;">
-                <div class="dash-grid" style="color:var(--hrc-yellow)"><span class="grid-label">A-B</span><span id="p-ab">-</span></div>
-            </div>
+
+    <div id="map-wrapper">
+        <div id="map"></div>
+    </div>
+
+    <div class="right-section-wrapper">
+        <div id="lap-panel">
+            <div id="lap"></div>
         </div>
-        <div style="height:100%; width:100%;"><canvas id="mainChart"></canvas></div>
+        <div class="data-column">
+            <div class="data-box"><div class="label">SPD</div><div class="val" id="speed_val">0</div></div>
+            <div class="data-box"><div class="label">MAX</div><div class="val" id="max_speed_val" style="color: var(--hrc-orange);">0</div></div>
+            <div class="data-box"><div class="label">SEC DIST</div><div class="val" id="sec_dist_val">0m</div></div>
+            <div class="data-box"><div class="label">DIST</div><div class="val" id="dist_val">0m</div></div>
+        </div>
+    </div>
+
+    <div id="debug-info">
+        LAT: <span id="debug-lat">0.000000</span> | LON: <span id="debug-lon">0.000000</span> | ACC: <span id="debug-acc">0</span>m | INTV: <span id="debug-intv">0</span>m | LAPS: <span id="debug-laps">∞</span>
+    </div>
+
+    <footer>
+        <button id="intGpsBtn">INT GPS</button>
+        <button id="startBtn">START</button>
+        <button id="pauseBtn">PAUSE</button>
+        <button id="lapBtn">LAP</button>
+        <button id="historyBtn">HISTORY</button>
+        <button id="analyzerBtn" onclick="location.href='analyzer.html'">ANALYZER</button>
+        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#fff; border-color:var(--hrc-orange);">GPX</button>
+        <button onclick="location.reload()">RELOAD</button>
+    </footer>
+</div>
+
+<div id="history-page">
+    <div class="close-btn" onclick="document.getElementById('history-page').style.display='none'">CLOSE</div>
+    <div style="overflow-y: auto; height: calc(100% - 80px);">
+        <table id="history-table">
+            <thead>
+                <tr><th>LAP</th><th>DIST</th><th>SPLIT</th><th>LAP TIME</th><th>PACE(/km)</th><th>MAX</th></tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+        </table>
     </div>
 </div>
 
-<div id="controls">
-    <div class="ctrl-row">
-        <button class="mini-btn" id="playBtn" style="background:var(--hrc-red)">PLAY</button>
-        <button class="mini-btn" id="fileBtn">OPEN GPX</button>
-        <button class="mini-btn" id="openListBtn" style="background:var(--hrc-blue)">LAP LIST</button>
-        <button class="mini-btn" id="btnSetA" style="background:var(--hrc-yellow); color:#000">SET A</button>
-        <button class="mini-btn" id="btnSetB" style="background:var(--hrc-yellow); color:#000">SET B</button>
-        <button class="mini-btn" onclick="location.reload()">RESET</button>
-    </div>
-    <input type="range" id="seek-bar" value="0">
-    <input type="file" id="fileInput" accept=".gpx" style="display:none">
-</div>
-
-<div id="lap-list-overlay">
-    <h3 id="overlay-title" style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
-    <div class="mode-tabs">
-        <button class="mode-tab-btn active" id="tab-dist" onclick="switchAnalysisMode('dist')">距離セクター</button>
-        <button class="mode-tab-btn" id="tab-sector" onclick="switchAnalysisMode('sector')">任意セクター</button>
-        <button class="mode-tab-btn" id="tab-circuit" onclick="switchAnalysisMode('circuit')">周回ラップ</button>
-    </div>
-    <div class="total-run-banner">
-        <div>
-            <span style="color:#aaa; font-size:11px;">START → GOAL TOTAL TIME</span><br>
-            <span class="total-run-time" id="start-goal-time">-</span>
-        </div>
-        <div id="start-goal-meta" style="color:#ccc; font-size:12px; text-align:right;">-</div>
-    </div>
-    <div class="sector-summary-bar">
-        <div class="summary-card best-card">
-            <div style="color:var(--hrc-red); font-weight:bold;">BEST</div>
-            <div id="best-sector-summary" style="margin-top:3px;">-</div>
-        </div>
-        <div class="summary-card slow-card">
-            <div style="color:var(--hrc-blue); font-weight:bold;">SLOWEST</div>
-            <div id="slow-sector-summary" style="margin-top:3px;">-</div>
-        </div>
-    </div>
-    <div id="lap-list-content"></div>
-    <button class="mini-btn" style="margin-top:12px; width:100%; height:48px; background:var(--hrc-blue); font-size:15px;" onclick="closeLapList()">CLOSE</button>
-</div>
-
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
+if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
+    alert("認証が必要です。設定画面からパスワードを入力してください。");
+    location.href = "index.html";
+}
+
 'use strict';
-let map, markerP, mainChart, fullRunData = null;
-let distanceSectors = [];
-let customSectors = [];
-let circuitLaps = [];
-let analysisMode = 'dist'; // 'dist' | 'sector' | 'circuit'
 
-let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
-let latOffset = 0, lonOffset = 0;
-let gpxLapIntervalM = 0;
+let swState = 0; // 0:待機, 1:計測中, 2:停止, 3:一時停止(PAUSE)
+let startTime = 0;
+let pauseStartTime = 0;
+let pausedAccumulatedMs = 0;
+let startLineCrossTime = null;
+
+// 距離ラップ（D1, D2...）独立管理用
+let distLapCounter = 0;
+let lastDistanceLapTime = 0;
+let distanceBaseM = 0;
+
+// 任意セクター・折り返し（S1...）独立管理用
+let lastSectorCrossTime = 0;
+let lastSectorCrossDistM = 0;
+
+// 周回ラップ（L1, L2...）管理用
+let circuitLapCounter = 0;
+let currentLapStartTime = 0;
+let lastLapCrossTime = 0;
+let sectorBaseDistanceM = 0;
+
+let lapRecords = [];
+
+let currentSpeedKmh = 0;
+let maxSpeedInLap = 0;
+let lastPos = null;
+let lastAltitudeM = null;
+let currentLapPoints = [];
+
+let isFrozen = false;
+let freezeDisplayTime = "00:00.000";
+let freezeUntil = 0;
+
+let courseMode = 'marathon'; // 'marathon' | 'circuit'
+let targetCircuitLaps = 0; // 0 = 無制限
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
-let gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
-const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
-const SECTOR_COOLDOWN_SEC = 3.0;
-const LAP_COOLDOWN_SEC = 5.0;
+let lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
+let hasAnySectorLine = false;
+let triggeredSectors = {}; // 永久ロック用
+let turnTriggered = false; // 折り返しライン永久ロック用
+let seqSectorCounter = 0; // 折り返し連番用（S1, S2, S3...）
+let validStartDirection = null;
+let startTriggered = false;
 
-window.onload = () => {
-    map = L.map('map', {
-        zoomControl: false,
-        maxZoom: 24,
-        attributionControl: false
-    }).setView([35.68, 139.76], 15);
+let lapIntervalM = 0; // 0なら自動距離ラップ（D1...）なし
+let totalDistanceM = 0;
+let nextLapDistanceM = 0;
+let watchId = null;
+const startCooldownMs = 5000;
+const lapCooldownMs = 5000;
+const sectorCooldownMs = 3000;
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 24,
-        maxNativeZoom: 18
+let map = null;
+let currentMarker = null;
+let trackPolyline = null;
+let trackLatLngs = [];
+let mapCenteredOnce = false;
+
+function getEffectiveTime(rawNow = Date.now()) {
+    const activePauseMs = (swState === 3 && pauseStartTime > 0)
+        ? Math.max(0, rawNow - pauseStartTime)
+        : 0;
+    return rawNow - pausedAccumulatedMs - activePauseMs;
+}
+
+function resetPauseButtonUI() {
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (!pauseBtn) return;
+    pauseBtn.textContent = 'PAUSE';
+    pauseBtn.classList.remove('paused');
+}
+
+function syncMapAspectRatio() {
+    const wrapper = document.getElementById('map-wrapper');
+    if (!wrapper) return;
+
+    const w = wrapper.clientWidth;
+    if (w > 0) {
+        const h = Math.round(w / 3);
+        wrapper.style.height = `${h}px`;
+        wrapper.style.maxHeight = 'none';
+    }
+
+    if (map) {
+        map.invalidateSize();
+    }
+}
+
+function initMap() {
+    if (typeof L === 'undefined') return;
+    syncMapAspectRatio();
+
+    map = L.map('map', { zoomControl: false, attributionControl: true }).setView([35.68, 139.76], 16);
+
+    L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+        maxZoom: 18,
+        attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>'
     }).addTo(map);
 
-    L.control.attribution({ prefix: 'Esri' }).addTo(map);
+    trackPolyline = L.polyline([], { color: '#D40024', weight: 4 }).addTo(map);
 
-    markerP = L.circleMarker([0, 0], { color: '#33ccff', fillColor: '#000', radius: 7, fillOpacity: 1, weight: 3 }).addTo(map);
-    makeDraggable(document.getElementById('data-dashboard'), document.getElementById('dash-handle'));
-
-    const seekBar = document.getElementById('seek-bar');
-    const handleLinearSeek = (e) => {
-        if (isPlaying) {
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "PLAY";
+    if (lines.startLine) {
+        L.polyline(
+            [[lines.startLine.p1.lat, lines.startLine.p1.lon], [lines.startLine.p2.lat, lines.startLine.p2.lon]],
+            { color: '#E4002B', weight: 4 }
+        ).addTo(map);
+        map.setView([lines.startLine.p1.lat, lines.startLine.p1.lon], 17);
+        mapCenteredOnce = true;
+    }
+    if (lines.goalLine) {
+        L.polyline(
+            [[lines.goalLine.p1.lat, lines.goalLine.p1.lon], [lines.goalLine.p2.lat, lines.goalLine.p2.lon]],
+            { color: '#28a745', weight: 4 }
+        ).addTo(map);
+    }
+    if (lines.turnLine) {
+        L.polyline(
+            [[lines.turnLine.p1.lat, lines.turnLine.p1.lon], [lines.turnLine.p2.lat, lines.turnLine.p2.lon]],
+            { color: '#ff6d00', weight: 4 }
+        ).addTo(map);
+        if (!mapCenteredOnce) {
+            map.setView([lines.turnLine.p1.lat, lines.turnLine.p1.lon], 17);
+            mapCenteredOnce = true;
         }
-        currentFrame = parseInt(e.target.value, 10) || 0;
-        updateFrame();
-    };
-    seekBar.addEventListener('input', handleLinearSeek);
-    seekBar.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
-    seekBar.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
-};
-
-function makeDraggable(el, handle) {
-    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-    handle.onmousedown = dragStart;
-    handle.ontouchstart = dragStart;
-
-    function dragStart(e) {
-        e = e || window.event;
-        e.preventDefault();
-        const rect = el.getBoundingClientRect();
-        el.style.right = 'auto';
-        el.style.left = rect.left + 'px';
-        el.style.top = rect.top + 'px';
-
-        pos3 = e.clientX || (e.touches ? e.touches[0].clientX : 0);
-        pos4 = e.clientY || (e.touches ? e.touches[0].clientY : 0);
-
-        document.onmouseup = dragEnd;
-        document.ontouchend = dragEnd;
-        document.onmousemove = dragMove;
-        document.ontouchmove = dragMove;
     }
-
-    function dragMove(e) {
-        let cx = e.clientX || (e.touches ? e.touches[0].clientX : 0);
-        let cy = e.clientY || (e.touches ? e.touches[0].clientY : 0);
-        pos1 = pos3 - cx;
-        pos2 = pos4 - cy;
-        pos3 = cx;
-        pos4 = cy;
-        el.style.top = (el.offsetTop - pos2) + "px";
-        el.style.left = (el.offsetLeft - pos1) + "px";
+    if (lines.lapLine) {
+        L.polyline(
+            [[lines.lapLine.p1.lat, lines.lapLine.p1.lon], [lines.lapLine.p2.lat, lines.lapLine.p2.lon]],
+            { color: '#9c27b0', weight: 4 }
+        ).addTo(map);
+        if (!mapCenteredOnce) {
+            map.setView([lines.lapLine.p1.lat, lines.lapLine.p1.lon], 17);
+            mapCenteredOnce = true;
+        }
     }
+    SECTOR_KEYS.forEach((key) => {
+        const sLine = lines.sectors[key];
+        if (sLine) {
+            L.polyline(
+                [[sLine.p1.lat, sLine.p1.lon], [sLine.p2.lat, sLine.p2.lon]],
+                { color: '#00838f', weight: 3, dashArray: '5, 5' }
+            ).addTo(map);
+            if (!mapCenteredOnce) {
+                map.setView([sLine.p1.lat, sLine.p1.lon], 17);
+                mapCenteredOnce = true;
+            }
+        }
+    });
 
-    function dragEnd() {
-        document.onmouseup = null;
-        document.onmousemove = null;
-        document.ontouchend = null;
-        document.ontouchmove = null;
-    }
+    setTimeout(syncMapAspectRatio, 150);
 }
 
-function adjustMap(dLat, dLon) { latOffset += dLat; lonOffset += dLon; updateUI(); }
+function updateMapPosition(lat, lon) {
+    if (!map) return;
+    const latlng = [lat, lon];
 
-document.getElementById('fileBtn').onclick = () => document.getElementById('fileInput').click();
-document.getElementById('fileInput').onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-        fullRunData = null;
-        distanceSectors = [];
-        customSectors = [];
-        circuitLaps = [];
-        gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
-        window.isMapInit = false;
-        currentFrame = 0;
-        idxA = null;
-        idxB = null;
-        isPlaying = false;
-        document.getElementById('playBtn').innerText = "PLAY";
-
-        const xml = new DOMParser().parseFromString(evt.target.result, "text/xml");
-        parseMarathonMeta(xml);
-        processFullRunGPX(xml);
-
-        if (circuitLaps.length > 0 && gpxLines.lapLine) {
-            analysisMode = 'circuit';
-        } else if (customSectors.length > 0) {
-            analysisMode = 'sector';
-        } else {
-            analysisMode = 'dist';
-        }
-        updateModeTabs();
-        renderSectorList();
-        updateUI();
-        document.getElementById('lap-list-overlay').style.display = 'flex';
-    };
-    reader.readAsText(file);
-};
-
-function switchAnalysisMode(mode) {
-    analysisMode = mode;
-    updateModeTabs();
-    renderSectorList();
-    updateUI();
-}
-
-function updateModeTabs() {
-    const tDist = document.getElementById('tab-dist');
-    const tSec = document.getElementById('tab-sector');
-    const tLap = document.getElementById('tab-circuit');
-    const titleEl = document.getElementById('overlay-title');
-
-    tDist.className = 'mode-tab-btn' + (analysisMode === 'dist' ? ' active' : '');
-    tSec.className = 'mode-tab-btn' + (analysisMode === 'sector' ? ' active-sec' : '');
-    tLap.className = 'mode-tab-btn' + (analysisMode === 'circuit' ? ' active-lap' : '');
-
-    tDist.textContent = `距離セクター (${distanceSectors.length})`;
-    tSec.textContent = `任意セクター (${customSectors.length})`;
-    tLap.textContent = `周回ラップ (${circuitLaps.length})`;
-
-    if (analysisMode === 'circuit') {
-        titleEl.textContent = 'CIRCUIT LAPS (LAP LINE)';
-    } else if (analysisMode === 'sector') {
-        titleEl.textContent = 'CUSTOM SECTORS (S1 - S10 / TURN)';
+    if (!currentMarker) {
+        currentMarker = L.circleMarker(latlng, {
+            radius: 6,
+            color: '#ffffff',
+            weight: 2,
+            fillColor: '#0077cc',
+            fillOpacity: 1
+        }).addTo(map);
     } else {
-        titleEl.textContent = 'DISTANCE SECTORS (START → GOAL)';
+        currentMarker.setLatLng(latlng);
     }
-}
 
-function parseMarathonMeta(xml) {
-    const stored = Number(localStorage.getItem('marathon_lap_interval_m'));
-    gpxLapIntervalM = (!isNaN(stored) && stored >= 0) ? stored : 0;
-    const desc = xml.getElementsByTagName('desc')[0]?.textContent || '';
-    const match = desc.match(/LAP_INTERVAL_M:(\d+)/i);
-    if (match) {
-        gpxLapIntervalM = Math.max(0, Number(match[1]));
+    if (swState === 1) {
+        trackLatLngs.push(latlng);
+        trackPolyline.setLatLngs(trackLatLngs);
+    }
+
+    if (!mapCenteredOnce) {
+        map.setView(latlng, 17);
+        mapCenteredOnce = true;
+    } else if (swState === 1 || swState === 3) {
+        map.panTo(latlng, { animate: false });
     }
 }
 
@@ -431,844 +310,775 @@ function calcDistanceMeters(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function getLineIntersection(p1, p2, line) {
+function getIntersection(p1, p2, line) {
     if (!line) return null;
-    const x1 = p1[1], y1 = p1[0], x2 = p2[1], y2 = p2[0];
-    const x3 = line.p1[1], y3 = line.p1[0], x4 = line.p2[1], y4 = line.p2[0];
+    const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
+    const x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
     const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
     if (Math.abs(den) < 1e-12) return null;
     const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
     const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
         return {
-            t,
-            coord: [y1 + (y2 - y1) * t, x1 + (x2 - x1) * t],
+            time: p1.time + (p2.time - p1.time) * t,
             dir: ((x4 - x3) * (y2 - y1) - (y4 - y3) * (x2 - x1)) > 0 ? 1 : -1
         };
     }
     return null;
 }
 
-function smoothMovingAverage(values, halfWindow = SMOOTH_HALF_WINDOW) {
-    if (!Array.isArray(values) || values.length === 0) return [];
-    return values.map((_, idx, arr) => {
-        const start = Math.max(0, idx - halfWindow);
-        const end = Math.min(arr.length - 1, idx + halfWindow);
-        let sum = 0;
-        for (let i = start; i <= end; i++) {
-            sum += arr[i];
-        }
-        return sum / (end - start + 1);
-    });
+// 距離ラップ（D1, D2...）記録：距離間のタイムのみ算出
+function recordDistanceSegmentLap(hitTime, targetDistM, segDistanceM, isManual) {
+    const baseTime = lastDistanceLapTime || startLineCrossTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
+
+    distLapCounter++;
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const record = {
+        no: distLapCounter,
+        label: `D${distLapCounter}(${Math.round(targetDistM)}m)`,
+        kind: 'distance',
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: [...currentLapPoints]
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    if (!isManual) {
+        isFrozen = true;
+        freezeDisplayTime = timeFormat(lapMs);
+        freezeUntil = Date.now() + 5000;
+    }
+
+    lastDistanceLapTime = hitTime;
+    distanceBaseM = targetDistM;
+    currentLapPoints = [];
+    maxSpeedInLap = 0;
 }
 
-function formatLapTime(sec) {
-    const safeSec = Math.max(0, sec || 0);
-    const m = Math.floor(safeSec / 60);
-    const s = safeSec % 60;
-    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+// 任意セクター・折り返し記録：セクター間のタイムのみ算出
+function recordCustomSectorLap(hitTime, targetDistM, segDistanceM, tagName) {
+    const baseTime = lastSectorCrossTime || startLineCrossTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
+
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const record = {
+        no: lapRecords.length + 1,
+        label: `${tagName}(${Math.round(targetDistM)}m)`,
+        kind: 'sector',
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: []
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    lastSectorCrossTime = hitTime;
+    lastSectorCrossDistM = targetDistM;
+}
+
+// 周回ラップ（L1, L2...）記録
+function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
+    const baseTime = currentLapStartTime || startTime;
+    const lapMs = Math.max(0, hitTime - baseTime);
+    const splitBase = startLineCrossTime || startTime;
+    const splitMs = Math.max(0, hitTime - splitBase);
+
+    circuitLapCounter++;
+    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const paceSecPerKm = (lapMs / 1000) / distKm;
+
+    const record = {
+        no: circuitLapCounter,
+        label: `L${circuitLapCounter}(${Math.round(targetDistM)}m)`,
+        kind: 'circuit',
+        targetDistM: Math.round(targetDistM),
+        segDistanceM: Math.round(segDistanceM),
+        splitMs: splitMs,
+        lapMs: lapMs,
+        paceSecPerKm: paceSecPerKm,
+        max: maxSpeedInLap,
+        points: [...currentLapPoints]
+    };
+
+    lapRecords.unshift(record);
+    updateLapList();
+    localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
+
+    isFrozen = true;
+    freezeDisplayTime = timeFormat(lapMs);
+    freezeUntil = Date.now() + 5000;
+
+    currentLapStartTime = hitTime;
+    lastSectorCrossTime = hitTime;
+    lastSectorCrossDistM = targetDistM;
+    sectorBaseDistanceM = targetDistM;
+    triggeredSectors = {};
+    turnTriggered = false;
+    seqSectorCounter = 0;
+    currentLapPoints = [];
+    maxSpeedInLap = 0;
+}
+
+function updateLapList() {
+    if (lapRecords.length === 0) {
+        document.getElementById('lap').innerHTML = '';
+        return;
+    }
+    const lapOnly = lapRecords.filter(r => r.kind === 'circuit' || r.kind === 'distance');
+    const best = lapOnly.length > 0
+        ? Math.min(...lapOnly.map(r => r.lapMs))
+        : Math.min(...lapRecords.map(r => r.lapMs));
+    document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(best)}`;
+
+    document.getElementById('lap').innerHTML = lapRecords.map(r => {
+        const isSector = (r.kind === 'sector');
+        const rowClass = isSector ? 'sector-row' : (r.lapMs === best ? 'best-lap' : '');
+        return `
+        <div class="lap-row ${rowClass}">
+            <span>${r.label}</span>
+            <span>${timeFormat(r.lapMs)}</span>
+        </div>`;
+    }).join('');
 }
 
 function formatPace(secPerKm) {
     if (!isFinite(secPerKm) || secPerKm <= 0) return "--'--\"";
     const totalSec = Math.round(secPerKm);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${m}'${s.toString().padStart(2, '0')}"`;
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}'${sec.toString().padStart(2, '0')}"`;
 }
 
-function loadStoredLineFallback(key) {
-    const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
-    const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
-    const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
-    const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
-    if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
-        return { p1: [p1Lat, p1Lon], p2: [p2Lat, p2Lon] };
+function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = null, rawAltitudeM = null) {
+    if (currLat === 0 && currLon === 0) return;
+    document.getElementById('debug-lat').textContent = currLat.toFixed(6);
+    document.getElementById('debug-lon').textContent = currLon.toFixed(6);
+    document.getElementById('debug-acc').textContent = Math.round(acc);
+
+    updateMapPosition(currLat, currLon);
+
+    if (swState === 3) {
+        lastPos = null;
+        return;
     }
-    return null;
-}
 
-function cloneCoordLine(line) {
-    if (!line) return null;
-    return { p1: [...line.p1], p2: [...line.p2] };
-}
+    const effNow = getEffectiveTime(rawNow);
+    const cur = { lat: currLat, lon: currLon, time: effNow };
 
-function processFullRunGPX(xml) {
-    gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
-    const trks = xml.getElementsByTagName('trk');
-    let pts = [];
-    let hasLineTrackInGpx = false;
+    if (swState === 1) {
+        if (courseMode === 'circuit' && lines.lapLine) {
+            const canAccumulate = startTriggered;
+            if (canAccumulate && lastPos) {
+                const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
+                if (stepM >= 0.5 && stepM < 200) {
+                    const prevTotalM = totalDistanceM;
+                    const prevTime = lastPos.time;
+                    totalDistanceM += stepM;
 
-    for (let t = 0; t < trks.length; t++) {
-        const nameNode = trks[t].getElementsByTagName('name')[0];
-        const trkName = (nameNode ? nameNode.textContent : '').trim().toUpperCase();
-        const trkPts = trks[t].getElementsByTagName('trkpt');
-        const secMatch = trkName.match(/^SEC(\d+)_LINE$/);
+                    if (rawSpeedMps !== null && rawSpeedMps > 0) {
+                        currentSpeedKmh = rawSpeedMps * 3.6;
+                    } else {
+                        const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
+                        currentSpeedKmh = (stepM / dtSec) * 3.6;
+                    }
+                    if (currentSpeedKmh > maxSpeedInLap) {
+                        maxSpeedInLap = Math.round(currentSpeedKmh);
+                    }
 
-        if (trkName === 'START_LINE' || trkName === 'GOAL_LINE' || trkName === 'TURN_LINE' || trkName === 'LAP_LINE' || secMatch) {
-            hasLineTrackInGpx = true;
-            if (trkPts.length >= 2) {
-                const p1Lat = parseFloat(trkPts[0].getAttribute('lat'));
-                const p1Lon = parseFloat(trkPts[0].getAttribute('lon'));
-                const p2Lat = parseFloat(trkPts[1].getAttribute('lat'));
-                const p2Lon = parseFloat(trkPts[1].getAttribute('lon'));
-                if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
-                    const lineData = { p1: [p1Lat, p1Lon], p2: [p2Lat, p2Lon] };
-                    if (trkName === 'START_LINE') gpxLines.startLine = lineData;
-                    if (trkName === 'GOAL_LINE') gpxLines.goalLine = lineData;
-                    if (trkName === 'TURN_LINE') gpxLines.turnLine = lineData;
-                    if (trkName === 'LAP_LINE') gpxLines.lapLine = lineData;
-                    if (secMatch) {
-                        const secNum = parseInt(secMatch[1], 10);
-                        if (secNum >= 1 && secNum <= 10) {
-                            gpxLines.sectors[`sec${secNum}Line`] = lineData;
+                    let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
+                        ? rawAltitudeM
+                        : null;
+                    if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
+                        validEle = lastAltitudeM;
+                    }
+                    if (validEle !== null) {
+                        lastAltitudeM = validEle;
+                    }
+
+                    currentLapPoints.push({
+                        lat: cur.lat,
+                        lon: cur.lon,
+                        ele: validEle,
+                        time: new Date(cur.time).toISOString(),
+                        speed: currentSpeedKmh,
+                        distM: Math.round(totalDistanceM)
+                    });
+
+                    if (lapIntervalM > 0) {
+                        while (totalDistanceM >= nextLapDistanceM) {
+                            const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
+                            const interpTime = prevTime + (cur.time - prevTime) * ratio;
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            nextLapDistanceM += lapIntervalM;
+                        }
+                    }
+                }
+            }
+
+            if (lastPos && canAccumulate && hasAnySectorLine) {
+                SECTOR_KEYS.forEach((key, idx) => {
+                    const sLine = lines.sectors[key];
+                    if (sLine && !triggeredSectors[key]) {
+                        const hitSec = getIntersection(lastPos, cur, sLine);
+                        const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > sectorCooldownMs));
+                        const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
+                        if (sinceStartOk && sinceLastSecOk) {
+                            triggeredSectors[key] = true;
+                            const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                            recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, `S${idx + 1}(L${circuitLapCounter + 1})`);
+                        }
+                    }
+                });
+            }
+
+            if (lastPos) {
+                const hitLap = getIntersection(lastPos, cur, lines.lapLine);
+                if (hitLap) {
+                    if (!startTriggered) {
+                        if (hitLap.time - startTime > startCooldownMs) {
+                            validStartDirection = hitLap.dir;
+                            startTriggered = true;
+                            startLineCrossTime = hitLap.time;
+                            currentLapStartTime = hitLap.time;
+                            lastLapCrossTime = hitLap.time;
+                            lastDistanceLapTime = hitLap.time;
+                            lastSectorCrossTime = hitLap.time;
+                            lastSectorCrossDistM = 0;
+                            totalDistanceM = 0;
+                            sectorBaseDistanceM = 0;
+                            distanceBaseM = 0;
+                            nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
+                            triggeredSectors = {};
+                            turnTriggered = false;
+                            seqSectorCounter = 0;
+                        }
+                    } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
+                        const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
+                        recordCircuitLap(hitLap.time, Math.round(totalDistanceM), segDist);
+                        lastLapCrossTime = hitLap.time;
+
+                        if (targetCircuitLaps > 0 && circuitLapCounter >= targetCircuitLaps) {
+                            swState = 2;
+                            resetPauseButtonUI();
+                            document.getElementById('startBtn').classList.remove('active');
+                            document.getElementById('gpxBtn').style.display = 'block';
                         }
                     }
                 }
             }
         } else {
-            pts = pts.concat(Array.from(trkPts));
+            // マラソン/区間モード
+            if (lines.startLine && lastPos && !startTriggered) {
+                const hitStart = getIntersection(lastPos, cur, lines.startLine);
+                if (hitStart && (hitStart.time - startTime > startCooldownMs)) {
+                    if (validStartDirection === null) validStartDirection = hitStart.dir;
+                    if (hitStart.dir === validStartDirection) {
+                        startTriggered = true;
+                        startLineCrossTime = hitStart.time;
+                        currentLapStartTime = hitStart.time;
+                        lastDistanceLapTime = hitStart.time;
+                        lastSectorCrossTime = hitStart.time;
+                        lastSectorCrossDistM = 0;
+                        totalDistanceM = 0;
+                        sectorBaseDistanceM = 0;
+                        distanceBaseM = 0;
+                        nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
+                    }
+                }
+            }
+
+            const canAccumulate = !lines.startLine || startTriggered;
+            if (canAccumulate && lastPos) {
+                const stepM = calcDistanceMeters(lastPos.lat, lastPos.lon, cur.lat, cur.lon);
+                if (stepM >= 0.5 && stepM < 200) {
+                    const prevTotalM = totalDistanceM;
+                    const prevTime = lastPos.time;
+                    totalDistanceM += stepM;
+
+                    if (rawSpeedMps !== null && rawSpeedMps > 0) {
+                        currentSpeedKmh = rawSpeedMps * 3.6;
+                    } else {
+                        const dtSec = Math.max(0.05, (cur.time - prevTime) / 1000);
+                        currentSpeedKmh = (stepM / dtSec) * 3.6;
+                    }
+                    if (currentSpeedKmh > maxSpeedInLap) {
+                        maxSpeedInLap = Math.round(currentSpeedKmh);
+                    }
+
+                    let validEle = (typeof rawAltitudeM === 'number' && !isNaN(rawAltitudeM))
+                        ? rawAltitudeM
+                        : null;
+
+                    if (validEle !== null && lastAltitudeM !== null && Math.abs(validEle - lastAltitudeM) > 50) {
+                        validEle = lastAltitudeM;
+                    }
+                    if (validEle !== null) {
+                        lastAltitudeM = validEle;
+                    }
+
+                    currentLapPoints.push({
+                        lat: cur.lat,
+                        lon: cur.lon,
+                        ele: validEle,
+                        time: new Date(cur.time).toISOString(),
+                        speed: currentSpeedKmh,
+                        distM: Math.round(totalDistanceM)
+                    });
+
+                    if (lapIntervalM > 0) {
+                        while (totalDistanceM >= nextLapDistanceM) {
+                            const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
+                            const interpTime = prevTime + (cur.time - prevTime) * ratio;
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            nextLapDistanceM += lapIntervalM;
+                        }
+                    }
+                }
+            }
+
+            if (lastPos && canAccumulate) {
+                // 折り返しライン（TURN）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
+                if (lines.turnLine && !turnTriggered) {
+                    const hitTurn = getIntersection(lastPos, cur, lines.turnLine);
+                    const sinceStartOk = (hitTurn && (hitTurn.time - (startLineCrossTime || startTime) > sectorCooldownMs));
+                    const sinceLastSecOk = (hitTurn && (hitTurn.time - lastSectorCrossTime > sectorCooldownMs));
+                    if (sinceStartOk && sinceLastSecOk) {
+                        turnTriggered = true;
+                        const turnSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                        const labelName = lines.turnLine ? `S${++seqSectorCounter}` : 'TURN';
+                        recordCustomSectorLap(hitTurn.time, Math.round(totalDistanceM), turnSegDist, labelName);
+                    }
+                }
+
+                // 任意セクター（S1〜S10）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
+                if (hasAnySectorLine) {
+                    SECTOR_KEYS.forEach((key, idx) => {
+                        const sLine = lines.sectors[key];
+                        if (sLine && !triggeredSectors[key]) {
+                            const hitSec = getIntersection(lastPos, cur, sLine);
+                            const sinceStartOk = (hitSec && (hitSec.time - (startLineCrossTime || startTime) > sectorCooldownMs));
+                            const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
+                            if (sinceStartOk && sinceLastSecOk) {
+                                triggeredSectors[key] = true;
+                                const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                                const labelName = lines.turnLine ? `S${++seqSectorCounter}` : `S${idx + 1}`;
+                                recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, labelName);
+                            }
+                        }
+                    });
+                }
+            }
+
+            if (lines.goalLine && lastPos && canAccumulate) {
+                const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
+                if (hitGoal) {
+                    const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+                    recordDistanceSegmentLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
+                    swState = 2;
+                    resetPauseButtonUI();
+                    document.getElementById('startBtn').classList.remove('active');
+                    document.getElementById('gpxBtn').style.display = 'block';
+                }
+            }
         }
     }
 
-    if (!hasLineTrackInGpx) {
-        gpxLines.startLine = loadStoredLineFallback('startLine');
-        gpxLines.goalLine = loadStoredLineFallback('goalLine');
-        gpxLines.turnLine = loadStoredLineFallback('turnLine');
-        gpxLines.lapLine = loadStoredLineFallback('lapLine');
-        SECTOR_KEYS.forEach(k => {
-            gpxLines.sectors[k] = loadStoredLineFallback(k);
-        });
+    lastPos = cur;
+}
+
+document.getElementById('intGpsBtn').onclick = function() {
+    const btn = this;
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        btn.classList.remove('active');
+        btn.style.backgroundColor = "#f2f2f2";
+        btn.style.color = "#000";
+    } else {
+        if (!navigator.geolocation) {
+            alert("この端末では内部GPSが利用できません。");
+            return;
+        }
+        btn.style.backgroundColor = "var(--hrc-orange)";
+        btn.style.color = "#fff";
+
+        watchId = navigator.geolocation.watchPosition(p => {
+            btn.style.backgroundColor = "var(--hrc-red)";
+            btn.style.color = "#fff";
+            btn.classList.add('active');
+
+            const rawSpd = (typeof p.coords.speed === 'number' && !isNaN(p.coords.speed)) ? p.coords.speed : null;
+            if (rawSpd !== null) currentSpeedKmh = rawSpd * 3.6;
+
+            const rawAlt = (typeof p.coords.altitude === 'number' && !isNaN(p.coords.altitude))
+                ? p.coords.altitude
+                : null;
+
+            handlePositionUpdate(
+                p.coords.latitude,
+                p.coords.longitude,
+                Date.now(),
+                p.coords.accuracy,
+                rawSpd,
+                rawAlt
+            );
+        }, err => {
+            console.warn("GPS取得エラー:", err);
+        }, { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 });
+    }
+};
+
+function timeFormat(ms) {
+    const safeMs = Math.max(0, ms);
+    const m = Math.floor(safeMs / 60000);
+    const s = Math.floor((safeMs % 60000) / 1000);
+    const ms2 = Math.floor(safeMs % 1000);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms2.toString().padStart(3, '0')}`;
+}
+
+function mainLoop() {
+    const rawNow = Date.now();
+    if (swState === 1 || swState === 3) {
+        const effNow = getEffectiveTime(rawNow);
+        const pauseTag = (swState === 3) ? " [PAUSE]" : "";
+        document.getElementById('display').textContent = "TOTAL " + timeFormat(effNow - startTime) + pauseTag;
+
+        const stLapEl = document.getElementById('stline-lap');
+        const hasStartLine = (courseMode === 'circuit') ? Boolean(lines.lapLine) : Boolean(lines.startLine);
+        if (hasStartLine) {
+            if (startTriggered && startLineCrossTime !== null) {
+                stLapEl.textContent = timeFormat(effNow - startLineCrossTime);
+            } else {
+                stLapEl.textContent = "00:00.000";
+            }
+        } else {
+            stLapEl.textContent = timeFormat(effNow - startTime);
+        }
+
+        const d1 = document.getElementById('display1');
+        if (swState === 3) {
+            d1.textContent = timeFormat(effNow - (currentLapStartTime || startTime));
+            d1.style.color = "var(--hrc-orange)";
+        } else if (isFrozen && rawNow < freezeUntil) {
+            d1.textContent = freezeDisplayTime;
+            d1.style.color = "#000";
+        } else {
+            d1.textContent = timeFormat(effNow - (currentLapStartTime || startTime));
+            d1.style.color = "#000";
+            isFrozen = false;
+        }
+    }
+    const secDistM = Math.max(0, totalDistanceM - sectorBaseDistanceM);
+    document.getElementById('speed_val').textContent = (swState === 3) ? 0 : Math.round(currentSpeedKmh);
+    document.getElementById('max_speed_val').textContent = maxSpeedInLap;
+    document.getElementById('sec_dist_val').textContent = `${Math.round(secDistM)}m`;
+    document.getElementById('dist_val').textContent = `${Math.round(totalDistanceM)}m`;
+    requestAnimationFrame(mainLoop);
+}
+
+document.getElementById('startBtn').onclick = function() {
+    if (swState === 0 || swState === 2) {
+        loadAllCourseLines();
+        courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
+        targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
+        const rawInterval = Number(localStorage.getItem('marathon_lap_interval_m'));
+        lapIntervalM = (!isNaN(rawInterval) && rawInterval > 0) ? rawInterval : 0;
+
+        document.getElementById('debug-intv').textContent = lapIntervalM;
+        document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
+
+        swState = 1;
+        startTime = Date.now();
+        pauseStartTime = 0;
+        pausedAccumulatedMs = 0;
+        startLineCrossTime = null;
+        lastLapCrossTime = 0;
+        currentLapStartTime = startTime;
+        lastDistanceLapTime = startTime;
+        lastSectorCrossTime = startTime;
+        lastSectorCrossDistM = 0;
+        triggeredSectors = {};
+        turnTriggered = false;
+        seqSectorCounter = 0;
+        lapRecords = [];
+        distLapCounter = 0;
+        circuitLapCounter = 0;
+        totalDistanceM = 0;
+        sectorBaseDistanceM = 0;
+        distanceBaseM = 0;
+        nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
+        maxSpeedInLap = 0;
+        currentLapPoints = [];
+        lastAltitudeM = null;
+        validStartDirection = null;
+        startTriggered = (courseMode === 'circuit') ? !lines.lapLine : !lines.startLine;
+        lastPos = null;
+
+        trackLatLngs = [];
+        if (trackPolyline) trackPolyline.setLatLngs([]);
+
+        resetPauseButtonUI();
+        this.classList.add('active');
+        document.getElementById('gpxBtn').style.display = 'none';
+        document.getElementById('lap').innerHTML = '';
+        document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>00:00.000`;
+        document.getElementById('stline-lap').textContent = "00:00.000";
+        document.getElementById('display1').style.color = "#000";
+    } else {
+        if (swState === 3 && pauseStartTime > 0) {
+            pausedAccumulatedMs += Math.max(0, Date.now() - pauseStartTime);
+            pauseStartTime = 0;
+        }
+        swState = 2;
+        resetPauseButtonUI();
+        this.classList.remove('active');
+        document.getElementById('display1').style.color = "#000";
+        document.getElementById('gpxBtn').style.display = 'block';
+    }
+};
+
+document.getElementById('pauseBtn').onclick = function() {
+    if (swState === 1) {
+        swState = 3;
+        pauseStartTime = Date.now();
+        isFrozen = false;
+        lastPos = null;
+        this.textContent = 'RESUME';
+        this.classList.add('paused');
+    } else if (swState === 3) {
+        if (pauseStartTime > 0) {
+            pausedAccumulatedMs += Math.max(0, Date.now() - pauseStartTime);
+            pauseStartTime = 0;
+        }
+        swState = 1;
+        lastPos = null;
+        this.textContent = 'PAUSE';
+        this.classList.remove('paused');
+        document.getElementById('display1').style.color = "#000";
+    }
+};
+
+document.getElementById('lapBtn').onclick = () => {
+    if (swState === 1) {
+        const effNow = getEffectiveTime(Date.now());
+        const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+        recordDistanceSegmentLap(effNow, Math.round(totalDistanceM), segDist, true);
+    }
+};
+
+document.getElementById('historyBtn').onclick = () => {
+    if (lapRecords.length === 0) {
+        alert("ラップ履歴がありません");
+        return;
+    }
+    const lapOnly = lapRecords.filter(r => r.kind === 'circuit' || r.kind === 'distance');
+    const bT = lapOnly.length > 0
+        ? Math.min(...lapOnly.map(r => r.lapMs))
+        : Math.min(...lapRecords.map(r => r.lapMs));
+
+    document.getElementById('history-body').innerHTML = lapRecords.map(r => {
+        const isSector = (r.kind === 'sector');
+        const isBest = (!isSector && r.lapMs === bT);
+        const timeStyle = isBest ? 'color:var(--hrc-red);' : '';
+        const tagStyle = isSector ? 'color:#00838f;' : '';
+        return `
+        <tr>
+            <td style="${tagStyle}">${r.label}</td>
+            <td>${r.targetDistM}m</td>
+            <td>${timeFormat(r.splitMs)}</td>
+            <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
+            <td>${formatPace(r.paceSecPerKm)}</td>
+            <td style="color:var(--hrc-orange);">${r.max}</td>
+        </tr>`;
+    }).join('');
+    document.getElementById('history-page').style.display = 'block';
+};
+
+document.getElementById('gpxBtn').onclick = async function() {
+    if (lapRecords.length === 0) {
+        alert("保存するデータがありません");
+        return;
     }
 
-    // 折り返しライン設定時：GOAL未設定ならSTARTを自動反映し、S1〜S4をS5〜S8へ逆順補完
-    if (gpxLines.turnLine) {
-        if (!gpxLines.goalLine && gpxLines.startLine) {
-            gpxLines.goalLine = cloneCoordLine(gpxLines.startLine);
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="KLAP_MARATHON_GPS" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata>
+    <desc>LAP_INTERVAL_M:${lapIntervalM};CIRCUIT_LAPS:${targetCircuitLaps}</desc>
+</metadata>
+<trk><name>KLAP_MARATHON_${new Date().getTime()}</name>
+<trkseg>`;
+
+    [...lapRecords].reverse().forEach(lap => {
+        if (lap.points && lap.points.length > 0) {
+            lap.points.forEach(p => {
+                const eleTag = (typeof p.ele === 'number' && !isNaN(p.ele))
+                    ? `\n<ele>${p.ele.toFixed(1)}</ele>`
+                    : '';
+
+                gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}">${eleTag}
+<time>${p.time}</time>
+<extensions><speed>${(p.speed / 3.6).toFixed(2)}</speed></extensions>
+</trkpt>`;
+            });
         }
-        const forwardIndices = [1, 2, 3, 4].filter(n => Boolean(gpxLines.sectors[`sec${n}Line`]));
+    });
+
+    gpx += `\n</trkseg>\n</trk>`;
+
+    if (lines.startLine) {
+        gpx += `\n<trk><name>START_LINE</name><trkseg>
+<trkpt lat="${lines.startLine.p1.lat}" lon="${lines.startLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.startLine.p2.lat}" lon="${lines.startLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    if (lines.goalLine) {
+        gpx += `\n<trk><name>GOAL_LINE</name><trkseg>
+<trkpt lat="${lines.goalLine.p1.lat}" lon="${lines.goalLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.goalLine.p2.lat}" lon="${lines.goalLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    if (lines.turnLine) {
+        gpx += `\n<trk><name>TURN_LINE</name><trkseg>
+<trkpt lat="${lines.turnLine.p1.lat}" lon="${lines.turnLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.turnLine.p2.lat}" lon="${lines.turnLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    if (lines.lapLine) {
+        gpx += `\n<trk><name>LAP_LINE</name><trkseg>
+<trkpt lat="${lines.lapLine.p1.lat}" lon="${lines.lapLine.p1.lon}"></trkpt>
+<trkpt lat="${lines.lapLine.p2.lat}" lon="${lines.lapLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+    }
+
+    SECTOR_KEYS.forEach((key, idx) => {
+        const sLine = lines.sectors[key];
+        if (sLine) {
+            gpx += `\n<trk><name>SEC${idx + 1}_LINE</name><trkseg>
+<trkpt lat="${sLine.p1.lat}" lon="${sLine.p1.lon}"></trkpt>
+<trkpt lat="${sLine.p2.lat}" lon="${sLine.p2.lon}"></trkpt>
+</trkseg></trk>`;
+        }
+    });
+
+    gpx += `\n</gpx>`;
+
+    const filename = `klap_marathon_${new Date().getTime()}.gpx`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const file = new File([blob], filename, { type: 'application/gpx+xml' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({
+                files: [file],
+                title: 'KLAP Marathon GPX',
+                text: `距離ラップ間隔: ${lapIntervalM}m`
+            });
+        } catch (err) {
+            if (err.name !== 'AbortError') downloadFallback(blob, filename);
+        }
+    } else {
+        downloadFallback(blob, filename);
+    }
+};
+
+function downloadFallback(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+window.addEventListener('resize', syncMapAspectRatio);
+window.addEventListener('orientationchange', () => setTimeout(syncMapAspectRatio, 200));
+
+function readStoredLine(key) {
+    const p1Lat = parseFloat(localStorage.getItem(key + 'P1Lat'));
+    const p1Lon = parseFloat(localStorage.getItem(key + 'P1Lon'));
+    const p2Lat = parseFloat(localStorage.getItem(key + 'P2Lat'));
+    const p2Lon = parseFloat(localStorage.getItem(key + 'P2Lon'));
+    if (!isNaN(p1Lat) && !isNaN(p1Lon) && !isNaN(p2Lat) && !isNaN(p2Lon)) {
+        return { p1: { lat: p1Lat, lon: p1Lon }, p2: { lat: p2Lat, lon: p2Lon } };
+    }
+    return null;
+}
+
+function cloneLine(line) {
+    if (!line) return null;
+    return {
+        p1: { lat: line.p1.lat, lon: line.p1.lon },
+        p2: { lat: line.p2.lat, lon: line.p2.lon }
+    };
+}
+
+function loadAllCourseLines() {
+    ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(key => {
+        lines[key] = readStoredLine(key);
+    });
+    SECTOR_KEYS.forEach(key => {
+        lines.sectors[key] = readStoredLine(key);
+    });
+
+    // 折り返しライン設定時：GOAL未設定ならSTARTを自動反映し、S1〜S4をS5〜S8へ逆順コピー
+    if (lines.turnLine) {
+        if (!lines.goalLine && lines.startLine) {
+            lines.goalLine = cloneLine(lines.startLine);
+        }
+        const forwardIndices = [1, 2, 3, 4].filter(n => Boolean(lines.sectors[`sec${n}Line`]));
         const reversed = [...forwardIndices].reverse();
         reversed.forEach((srcNum, idx) => {
             const dstNum = 5 + idx;
             const dstKey = `sec${dstNum}Line`;
-            if (dstNum <= 10 && !gpxLines.sectors[dstKey]) {
-                gpxLines.sectors[dstKey] = cloneCoordLine(gpxLines.sectors[`sec${srcNum}Line`]);
+            if (dstNum <= 10 && !lines.sectors[dstKey]) {
+                lines.sectors[dstKey] = cloneLine(lines.sectors[`sec${srcNum}Line`]);
             }
         });
     }
 
-    if (pts.length === 0) {
-        alert("GPXデータが見つかりません。");
-        return;
-    }
-
-    let firstRawTime = 0;
-    let totalDistM = 0;
-    let lastValidEle = null;
-
-    const run = {
-        coords: [],
-        timesSec: [],
-        speeds: [],
-        elevs: [],
-        dists: [],
-        totalTimeSec: 0,
-        totalDistM: 0
-    };
-
-    for (let i = 0; i < pts.length; i++) {
-        const lat = parseFloat(pts[i].getAttribute('lat'));
-        const lon = parseFloat(pts[i].getAttribute('lon'));
-        if (isNaN(lat) || isNaN(lon)) continue;
-
-        const timeStr = pts[i].getElementsByTagName('time')[0]?.textContent;
-        const rawTime = timeStr ? new Date(timeStr).getTime() : (firstRawTime + i * 1000);
-        if (run.coords.length === 0) firstRawTime = rawTime;
-        const elapsedSec = Math.max(0, (rawTime - firstRawTime) / 1000);
-
-        const eleNode = pts[i].getElementsByTagName('ele')[0];
-        let eleVal = eleNode ? parseFloat(eleNode.textContent) : NaN;
-        if (!isNaN(eleVal) && isFinite(eleVal)) {
-            lastValidEle = eleVal;
-        } else if (lastValidEle !== null) {
-            eleVal = lastValidEle;
-        } else {
-            eleVal = 0;
-        }
-
-        let rawSpeedMps = NaN;
-        const ext = pts[i].getElementsByTagName('extensions')[0];
-        if (ext) {
-            const spNode = ext.getElementsByTagName('speed')[0];
-            if (spNode) rawSpeedMps = parseFloat(spNode.textContent);
-        }
-
-        let spdKmh = 0;
-        if (run.coords.length > 0) {
-            const prevIdx = run.coords.length - 1;
-            const prevCoord = run.coords[prevIdx];
-            const prevTimeSec = run.timesSec[prevIdx];
-            const stepM = calcDistanceMeters(prevCoord[0], prevCoord[1], lat, lon);
-
-            if (stepM >= 0.3 && stepM < 250) {
-                totalDistM += stepM;
-            }
-            if (!isNaN(rawSpeedMps) && rawSpeedMps >= 0) {
-                spdKmh = rawSpeedMps * 3.6;
-            } else {
-                const dtSec = Math.max(0.05, elapsedSec - prevTimeSec);
-                spdKmh = (stepM / dtSec) * 3.6;
-            }
-        } else {
-            spdKmh = (!isNaN(rawSpeedMps) && rawSpeedMps >= 0) ? rawSpeedMps * 3.6 : 0;
-        }
-
-        run.coords.push([lat, lon]);
-        run.timesSec.push(elapsedSec);
-        run.speeds.push(spdKmh);
-        run.elevs.push(eleVal);
-        run.dists.push(totalDistM);
-    }
-
-    if (run.coords.length === 0) return;
-
-    run.speeds = smoothMovingAverage(run.speeds, SMOOTH_HALF_WINDOW);
-    run.elevs = smoothMovingAverage(run.elevs, SMOOTH_HALF_WINDOW);
-    run.totalTimeSec = run.timesSec[run.timesSec.length - 1];
-    run.totalDistM = run.dists[run.dists.length - 1];
-    fullRunData = run;
-
-    buildDistanceSectors(run);
-    buildCustomSectors(run);
-    buildCircuitLaps(run);
+    hasAnySectorLine = SECTOR_KEYS.some(key => Boolean(lines.sectors[key]));
 }
 
-// 1. 距離セクター算出（gpxLapIntervalM === 0 なら表示なし）
-function buildDistanceSectors(run) {
-    distanceSectors = [];
-    if (!gpxLapIntervalM || gpxLapIntervalM <= 0) return;
-
-    let lapNo = 1;
-    let nextTargetDistM = gpxLapIntervalM;
-    let segStartIdx = 0;
-    let segStartTimeSec = 0;
-    let segStartDistM = 0;
-
-    for (let i = 1; i < run.coords.length; i++) {
-        const prevDist = run.dists[i - 1];
-        const curDist = run.dists[i];
-        const segStep = curDist - prevDist;
-
-        while (segStep > 0 && curDist >= nextTargetDistM) {
-            const ratio = Math.max(0, Math.min(1, (nextTargetDistM - prevDist) / segStep));
-            const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * ratio;
-            const interpLat = run.coords[i - 1][0] + (run.coords[i][0] - run.coords[i - 1][0]) * ratio;
-            const interpLon = run.coords[i - 1][1] + (run.coords[i][1] - run.coords[i - 1][1]) * ratio;
-
-            const lapSec = Math.max(0.001, interpSec - segStartTimeSec);
-            const segDist = Math.max(1, nextTargetDistM - segStartDistM);
-            const sliceSpeeds = run.speeds.slice(segStartIdx, i + 1);
-            const sliceElevs = run.elevs.slice(segStartIdx, i + 1);
-
-            distanceSectors.push({
-                label: `D${lapNo}`,
-                lapNo,
-                targetDistM: nextTargetDistM,
-                segDistanceM: Math.round(segDist),
-                splitSec: interpSec,
-                toGoalSec: Math.max(0, run.totalTimeSec - interpSec),
-                durationSec: lapSec,
-                paceSecPerKm: lapSec / Math.max(0.001, segDist / 1000),
-                maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
-                minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
-                maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
-                endCoord: [interpLat, interpLon],
-                frameIndex: i
-            });
-
-            lapNo++;
-            nextTargetDistM += gpxLapIntervalM;
-            segStartIdx = i;
-            segStartTimeSec = interpSec;
-            segStartDistM = curDist;
-        }
-    }
-
-    const lastIdx = run.coords.length - 1;
-    const finalElapsedSec = run.timesSec[lastIdx];
-    const finalDistM = run.dists[lastIdx];
-    if (finalDistM > segStartDistM) {
-        const remDist = Math.max(1, finalDistM - segStartDistM);
-        const remSec = Math.max(0.001, finalElapsedSec - segStartTimeSec);
-        const sliceSpeeds = run.speeds.slice(segStartIdx, lastIdx + 1);
-        const sliceElevs = run.elevs.slice(segStartIdx, lastIdx + 1);
-
-        distanceSectors.push({
-            label: `D${lapNo}`,
-            lapNo,
-            targetDistM: Math.round(finalDistM),
-            segDistanceM: Math.round(remDist),
-            splitSec: finalElapsedSec,
-            toGoalSec: 0,
-            durationSec: remSec,
-            paceSecPerKm: remSec / Math.max(0.001, remDist / 1000),
-            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
-            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
-            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
-            endCoord: run.coords[lastIdx],
-            frameIndex: lastIdx
-        });
-    }
-}
-
-// 2. 任意セクター・折り返し（折り返し設定時は通過順 S1, S2, S3... 連番）
-function buildCustomSectors(run) {
-    customSectors = [];
-    const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
-    if (activeSecKeys.length === 0 && !gpxLines.turnLine) return;
-
-    const lapCrossSecs = [];
-    if (gpxLines.lapLine) {
-        let validDir = null;
-        let lastLapSec = -999;
-        for (let i = 1; i < run.coords.length; i++) {
-            const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.lapLine);
-            if (hit) {
-                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
-                if (validDir === null) {
-                    validDir = hit.dir;
-                    lapCrossSecs.push(interpSec);
-                    lastLapSec = interpSec;
-                } else if (hit.dir === validDir && (interpSec - lastLapSec > LAP_COOLDOWN_SEC)) {
-                    lapCrossSecs.push(interpSec);
-                    lastLapSec = interpSec;
-                }
-            }
-        }
-    }
-
-    const getLapNumberAtSec = (sec) => {
-        if (lapCrossSecs.length === 0) return null;
-        let lapNo = 1;
-        for (let c = 0; c < lapCrossSecs.length; c++) {
-            if (sec > lapCrossSecs[c] + 0.5) {
-                lapNo = c + 2;
-            }
-        }
-        return lapNo;
-    };
-
-    const hits = [];
-    const lastHitSecByKey = {};
-    let lastTurnHitSec = -999;
-    let lastAnyHitSec = -999;
-    let seqCounter = 0;
-    const useSequentialTurnLabels = Boolean(gpxLines.turnLine);
-
-    for (let i = 1; i < run.coords.length; i++) {
-        if (gpxLines.turnLine) {
-            const hitTurn = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.turnLine);
-            if (hitTurn) {
-                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hitTurn.t;
-                if (interpSec - lastTurnHitSec >= SECTOR_COOLDOWN_SEC && interpSec - lastAnyHitSec >= SECTOR_COOLDOWN_SEC) {
-                    lastTurnHitSec = interpSec;
-                    lastAnyHitSec = interpSec;
-                    const lapNo = getLapNumberAtSec(interpSec);
-                    const baseLabel = useSequentialTurnLabels ? `S${++seqCounter}` : 'TURN';
-                    const label = lapNo ? `${baseLabel}(L${lapNo})` : baseLabel;
-                    const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hitTurn.t;
-                    hits.push({
-                        label,
-                        splitSec: interpSec,
-                        targetDistM: Math.round(interpDist),
-                        endCoord: hitTurn.coord,
-                        frameIndex: i
-                    });
-                }
-            }
-        }
-
-        activeSecKeys.forEach(key => {
-            const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.sectors[key]);
-            if (hit) {
-                const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
-                const prevSameSec = lastHitSecByKey[key] ?? -999;
-                if (interpSec - prevSameSec < SECTOR_COOLDOWN_SEC || interpSec - lastAnyHitSec < SECTOR_COOLDOWN_SEC) return;
-
-                lastHitSecByKey[key] = interpSec;
-                lastAnyHitSec = interpSec;
-
-                const secNum = parseInt(key.replace(/\D/g, ''), 10);
-                const lapNo = getLapNumberAtSec(interpSec);
-                const baseLabel = useSequentialTurnLabels ? `S${++seqCounter}` : `S${secNum}`;
-                const label = lapNo ? `${baseLabel}(L${lapNo})` : baseLabel;
-                const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
-
-                hits.push({
-                    label,
-                    secNum,
-                    splitSec: interpSec,
-                    targetDistM: Math.round(interpDist),
-                    endCoord: hit.coord,
-                    frameIndex: i
-                });
-            }
-        });
-    }
-
-    if (hits.length === 0) return;
-    hits.sort((a, b) => a.splitSec - b.splitSec);
-
-    let prevIdx = 0;
-    let prevTimeSec = 0;
-    let prevDistM = 0;
-
-    hits.forEach((h, idx) => {
-        const durSec = Math.max(0.001, h.splitSec - prevTimeSec);
-        const segDist = Math.max(1, h.targetDistM - prevDistM);
-        const sliceSpeeds = run.speeds.slice(prevIdx, h.frameIndex + 1);
-        const sliceElevs = run.elevs.slice(prevIdx, h.frameIndex + 1);
-
-        customSectors.push({
-            label: h.label,
-            lapNo: idx + 1,
-            targetDistM: h.targetDistM,
-            segDistanceM: Math.round(segDist),
-            splitSec: h.splitSec,
-            toGoalSec: Math.max(0, run.totalTimeSec - h.splitSec),
-            durationSec: durSec,
-            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
-            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
-            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
-            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
-            endCoord: h.endCoord,
-            frameIndex: h.frameIndex
-        });
-
-        prevIdx = h.frameIndex;
-        prevTimeSec = h.splitSec;
-        prevDistM = h.targetDistM;
-    });
-
-    const lastIdx = run.coords.length - 1;
-    if (run.totalTimeSec > prevTimeSec + 0.5) {
-        const durSec = Math.max(0.001, run.totalTimeSec - prevTimeSec);
-        const segDist = Math.max(1, run.totalDistM - prevDistM);
-        const sliceSpeeds = run.speeds.slice(prevIdx, lastIdx + 1);
-        const sliceElevs = run.elevs.slice(prevIdx, lastIdx + 1);
-
-        customSectors.push({
-            label: 'GOAL',
-            lapNo: customSectors.length + 1,
-            targetDistM: Math.round(run.totalDistM),
-            segDistanceM: Math.round(segDist),
-            splitSec: run.totalTimeSec,
-            toGoalSec: 0,
-            durationSec: durSec,
-            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
-            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
-            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
-            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
-            endCoord: run.coords[lastIdx],
-            frameIndex: lastIdx
-        });
-    }
-}
-
-// 3. 周回ラップ（LAP_LINE）算出（L1, L2...）
-function buildCircuitLaps(run) {
-    circuitLaps = [];
-    if (!gpxLines.lapLine) return;
-
-    const crossings = [];
-    let validDir = null;
-    let lastCrossSec = -999;
-
-    for (let i = 1; i < run.coords.length; i++) {
-        const hit = getLineIntersection(run.coords[i - 1], run.coords[i], gpxLines.lapLine);
-        if (hit) {
-            const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
-            const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
-            if (validDir === null) {
-                validDir = hit.dir;
-                crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
-                lastCrossSec = interpSec;
-            } else if (hit.dir === validDir && (interpSec - lastCrossSec > LAP_COOLDOWN_SEC)) {
-                crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
-                lastCrossSec = interpSec;
-            }
-        }
-    }
-
-    if (crossings.length < 2) return;
-
-    for (let k = 1; k < crossings.length; k++) {
-        const prev = crossings[k - 1];
-        const cur = crossings[k];
-        const durSec = Math.max(0.001, cur.sec - prev.sec);
-        const segDist = Math.max(1, cur.dist - prev.dist);
-        const sliceSpeeds = run.speeds.slice(prev.frameIndex, cur.frameIndex + 1);
-        const sliceElevs = run.elevs.slice(prev.frameIndex, cur.frameIndex + 1);
-
-        circuitLaps.push({
-            label: `L${k}`,
-            lapNo: k,
-            targetDistM: Math.round(cur.dist),
-            segDistanceM: Math.round(segDist),
-            splitSec: cur.sec,
-            toGoalSec: Math.max(0, run.totalTimeSec - cur.sec),
-            durationSec: durSec,
-            paceSecPerKm: durSec / Math.max(0.001, segDist / 1000),
-            maxSpeed: sliceSpeeds.length > 0 ? Math.max(...sliceSpeeds) : 0,
-            minEle: sliceElevs.length > 0 ? Math.min(...sliceElevs) : 0,
-            maxEle: sliceElevs.length > 0 ? Math.max(...sliceElevs) : 0,
-            endCoord: cur.coord,
-            frameIndex: cur.frameIndex
-        });
-    }
-}
-
-function getActiveSectorList() {
-    if (analysisMode === 'circuit') return circuitLaps;
-    if (analysisMode === 'sector') return customSectors;
-    return distanceSectors;
-}
-
-function renderSectorList() {
-    const c = document.getElementById('lap-list-content');
-    const bestBox = document.getElementById('best-sector-summary');
-    const slowBox = document.getElementById('slow-sector-summary');
-    const totalTimeEl = document.getElementById('start-goal-time');
-    const totalMetaEl = document.getElementById('start-goal-meta');
-    if (!c) return;
-
-    const activeList = getActiveSectorList();
-
-    if (!fullRunData || activeList.length === 0) {
-        totalTimeEl.innerText = fullRunData ? formatLapTime(fullRunData.totalTimeSec) : "-";
-        totalMetaEl.innerText = fullRunData ? `DIST: ${Math.round(fullRunData.totalDistM)}m` : "-";
-        bestBox.innerText = "-";
-        slowBox.innerText = "-";
-        const emptyMsg = analysisMode === 'sector'
-            ? "任意セクター（S1〜S10 / TURN）の通過データがありません"
-            : analysisMode === 'circuit'
-                ? "周回ライン（LAP_LINE）の周回データがありません"
-                : "距離セクター設定が0m（なし）またはデータがありません";
-        c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">${emptyMsg}</div>`;
-        return;
-    }
-
-    const totalSec = fullRunData.totalTimeSec || 0;
-    const totalDist = fullRunData.totalDistM || 0;
-    const avgPace = totalDist > 0 ? totalSec / (totalDist / 1000) : 0;
-    totalTimeEl.innerText = formatLapTime(totalSec);
-    totalMetaEl.innerHTML = `DIST: <b>${Math.round(totalDist)}m</b> / AVG PACE: <b>${formatPace(avgPace)}/km</b>`;
-
-    let bestSec = activeList[0];
-    let slowSec = activeList[0];
-    activeList.forEach(sec => {
-        if (analysisMode === 'circuit') {
-            if (sec.durationSec < bestSec.durationSec) bestSec = sec;
-            if (sec.durationSec > slowSec.durationSec) slowSec = sec;
-        } else {
-            if (sec.paceSecPerKm < bestSec.paceSecPerKm) bestSec = sec;
-            if (sec.paceSecPerKm > slowSec.paceSecPerKm) slowSec = sec;
-        }
-    });
-
-    bestBox.innerHTML = `${bestSec.label} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red);">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
-    slowBox.innerHTML = `${slowSec.label} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue);">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
-
-    const globalMaxS = Math.max(...activeList.map(s => s.maxSpeed));
-
-    c.innerHTML = `<div class="lap-row list-header"><span>SEC</span><span>DIST</span><span>SPLIT</span><span>TIME</span><span>PACE</span><span>MAX</span><span>ELEV</span><span>TO GOAL</span></div>`;
-
-    activeList.forEach((sec) => {
-        const isBest = (sec.lapNo === bestSec.lapNo);
-        const isSlow = (sec.lapNo === slowSec.lapNo && activeList.length > 1);
-        const row = document.createElement('div');
-        row.className = `lap-row ${isBest ? 'row-best' : ''} ${isSlow ? 'row-slow' : ''}`;
-        const labelStyle = analysisMode === 'sector' ? 'color:var(--hrc-cyan);' : '';
-
-        row.innerHTML = `
-            <span style="${labelStyle}">${sec.label}</span>
-            <span>${sec.targetDistM}m</span>
-            <span>${formatLapTime(sec.splitSec)}</span>
-            <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatLapTime(sec.durationSec)}</span>
-            <span class="${isBest ? 'lap-best' : isSlow ? 'lap-slow' : ''}">${formatPace(sec.paceSecPerKm)}</span>
-            <span class="${sec.maxSpeed >= globalMaxS && sec.maxSpeed > 0 ? 'stat-best' : ''}">${Math.round(sec.maxSpeed)}</span>
-            <span>${Math.round(sec.minEle)}-${Math.round(sec.maxEle)}m</span>
-            <span style="color:var(--hrc-yellow);">${formatLapTime(sec.toGoalSec)}</span>
-        `;
-
-        row.onclick = () => {
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "PLAY";
-            currentFrame = sec.frameIndex;
-            document.getElementById('seek-bar').value = currentFrame;
-            document.getElementById('lap-list-overlay').style.display = 'none';
-            updateFrame();
-        };
-
-        c.appendChild(row);
-    });
-}
-
-function closeLapList() {
-    document.getElementById('lap-list-overlay').style.display = 'none';
-    updateFrame();
-}
-
-function updateUI() {
-    if (!fullRunData || fullRunData.coords.length === 0) return;
-
-    const seekBar = document.getElementById('seek-bar');
-    if (seekBar) {
-        seekBar.max = Math.max(0, fullRunData.speeds.length - 1);
-        if (!isPlaying) {
-            currentFrame = 0;
-            seekBar.value = 0;
-        }
-    }
-
-    if (window.pathLayer) {
-        map.removeLayer(window.pathLayer);
-    }
-
-    const g = L.featureGroup();
-    const movingSpeeds = fullRunData.speeds.filter(s => s > 2);
-    const maxS = Math.max(...fullRunData.speeds, 1);
-    const minS = movingSpeeds.length > 0 ? Math.min(...movingSpeeds) : 0;
-    const range = (maxS - minS) || 1;
-
-    for (let i = 1; i < fullRunData.coords.length; i++) {
-        let ratio = Math.max(0, Math.min(1, (fullRunData.speeds[i] - minS) / range));
-        let r = 0, g_val = 0, b = 0;
-        if (ratio < 0.5) {
-            g_val = Math.floor(255 * (ratio * 2));
-            b = Math.floor(255 * (1 - ratio * 2));
-        } else {
-            r = Math.floor(255 * ((ratio - 0.5) * 2));
-            g_val = Math.floor(255 * (1 - (ratio - 0.5) * 2));
-        }
-
-        L.polyline([
-            [fullRunData.coords[i - 1][0] + latOffset, fullRunData.coords[i - 1][1] + lonOffset],
-            [fullRunData.coords[i][0] + latOffset, fullRunData.coords[i][1] + lonOffset]
-        ], {
-            color: `rgb(${r}, ${g_val}, ${b})`,
-            weight: 4,
-            opacity: 0.95
-        }).addTo(g);
-    }
-
-    const activeList = getActiveSectorList();
-    activeList.forEach((sec) => {
-        if (!sec.endCoord) return;
-        const latlng = [sec.endCoord[0] + latOffset, sec.endCoord[1] + lonOffset];
-        const isCustom = (analysisMode === 'sector');
-        const pin = L.circleMarker(latlng, {
-            radius: 5,
-            color: '#000',
-            weight: 1.5,
-            fillColor: isCustom ? '#00e5ff' : '#ffff00',
-            fillOpacity: 0.95
-        });
-        pin.bindTooltip(`${sec.label} (${sec.targetDistM}m)`, {
-            permanent: true,
-            direction: 'top',
-            offset: [0, -4],
-            className: isCustom ? 'custom-sector-label' : 'sector-pin-label'
-        });
-        pin.addTo(g);
-    });
-
-    const lineConfigs = [
-        { key: 'startLine', color: '#E4002B', label: 'START' },
-        { key: 'goalLine',  color: '#28a745', label: 'GOAL' },
-        { key: 'turnLine',  color: '#ff6d00', label: 'TURN' },
-        { key: 'lapLine',   color: '#9c27b0', label: 'S/G (LAP)' }
-    ];
-    lineConfigs.forEach(cfg => {
-        const line = gpxLines[cfg.key];
-        if (!line) return;
-        const p1 = [line.p1[0] + latOffset, line.p1[1] + lonOffset];
-        const p2 = [line.p2[0] + latOffset, line.p2[1] + lonOffset];
-        L.polyline([p1, p2], {
-            color: cfg.color,
-            weight: 5,
-            opacity: 0.95
-        }).bindTooltip(cfg.label, {
-            permanent: true,
-            direction: 'center',
-            className: 'sector-pin-label'
-        }).addTo(g);
-    });
-
-    SECTOR_KEYS.forEach((key, idx) => {
-        const line = gpxLines.sectors[key];
-        if (!line) return;
-        const p1 = [line.p1[0] + latOffset, line.p1[1] + lonOffset];
-        const p2 = [line.p2[0] + latOffset, line.p2[1] + lonOffset];
-        L.polyline([p1, p2], {
-            color: '#00e5ff',
-            weight: 4,
-            dashArray: '6, 6',
-            opacity: 0.95
-        }).bindTooltip(`S${idx + 1}`, {
-            permanent: true,
-            direction: 'center',
-            className: 'custom-sector-label'
-        }).addTo(g);
-    });
-
-    window.pathLayer = g.addTo(map);
-
-    if (!window.isMapInit) {
-        const bounds = g.getBounds();
-        if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [30, 30] });
-            window.isMapInit = true;
-        }
-    }
-
-    createCharts();
-    updateFrame();
-}
-
-function createCharts() {
-    if (!fullRunData) return;
-
-    const datasets = [
-        {
-            label: 'SPD (km/h)',
-            data: fullRunData.speeds,
-            borderColor: '#33ccff',
-            pointRadius: 0,
-            tension: 0.35,
-            yAxisID: 'y',
-            borderWidth: 2.5
-        },
-        {
-            label: 'ELEV (m)',
-            data: fullRunData.elevs,
-            borderColor: '#33ff77',
-            backgroundColor: 'rgba(51, 255, 119, 0.14)',
-            fill: true,
-            pointRadius: 0,
-            tension: 0.35,
-            yAxisID: 'y1',
-            borderWidth: 2
-        }
-    ];
-
-    if (mainChart) mainChart.destroy();
-    const annotations = { now: { type: 'line', xMin: currentFrame, xMax: currentFrame, borderColor: '#fff', borderWidth: 2 } };
-    if (idxA !== null) annotations.lineA = { type: 'line', xMin: idxA, xMax: idxA, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
-    if (idxB !== null) annotations.lineB = { type: 'line', xMin: idxB, xMax: idxB, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
-
-    customSectors.forEach((sec, idx) => {
-        if (sec.label === 'GOAL') return;
-        annotations[`secLine_${idx}`] = {
-            type: 'line',
-            xMin: sec.frameIndex,
-            xMax: sec.frameIndex,
-            borderColor: '#00e5ff',
-            borderWidth: 1.5,
-            borderDash: [4, 4],
-            label: {
-                display: true,
-                content: sec.label,
-                position: 'start',
-                backgroundColor: 'rgba(0, 20, 28, 0.85)',
-                color: '#00e5ff',
-                font: { size: 9, weight: 'normal' },
-                padding: 2
-            }
-        };
-    });
-
-    mainChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
-        type: 'line',
-        data: { labels: fullRunData.dists.map(d => `${Math.round(d)}m`), datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            scales: {
-                x: { display: false },
-                y: {
-                    position: 'left',
-                    min: 0,
-                    title: { display: true, text: 'SPD (km/h)', color: '#33ccff', font: { size: 10 } },
-                    ticks: { color: '#33ccff', font: { size: 10 } },
-                    grid: { color: '#222' }
-                },
-                y1: {
-                    position: 'right',
-                    title: { display: true, text: 'ELEV (m)', color: '#33ff77', font: { size: 10 } },
-                    ticks: { color: '#33ff77', font: { size: 10 } },
-                    grid: { drawOnChartArea: false }
-                }
-            },
-            plugins: {
-                legend: { display: true, labels: { color: '#fff', boxWidth: 12, font: { size: 10 } } },
-                annotation: { annotations }
-            }
-        }
-    });
-}
-
-function updateFrame() {
-    if (!fullRunData || fullRunData.coords.length === 0) return;
-    const idx = Math.min(currentFrame, fullRunData.speeds.length - 1);
-    markerP.setLatLng([fullRunData.coords[idx][0] + latOffset, fullRunData.coords[idx][1] + lonOffset]);
-
-    document.getElementById('p-time').innerText = formatLapTime(fullRunData.timesSec[idx]);
-    document.getElementById('p-spd').innerText = `${Math.round(fullRunData.speeds[idx])}`;
-    document.getElementById('p-ele').innerText = `${fullRunData.elevs[idx].toFixed(1)}m`;
-    document.getElementById('p-dist').innerText = `${Math.round(fullRunData.dists[idx])}m`;
-
-    if (idxA !== null && idxB !== null) {
-        const aIdx = Math.min(idxA, fullRunData.timesSec.length - 1);
-        const bIdx = Math.min(idxB, fullRunData.timesSec.length - 1);
-        document.getElementById('p-ab').innerText = Math.abs(fullRunData.timesSec[bIdx] - fullRunData.timesSec[aIdx]).toFixed(2) + "s";
-    }
-
-    if (mainChart) {
-        mainChart.options.plugins.annotation.annotations.now.xMin = idx;
-        mainChart.options.plugins.annotation.annotations.now.xMax = idx;
-        mainChart.update('resize');
-    }
-}
-
-document.getElementById('btnSetA').onclick = () => { idxA = currentFrame; createCharts(); updateFrame(); };
-document.getElementById('btnSetB').onclick = () => { idxB = currentFrame; createCharts(); updateFrame(); };
-document.getElementById('openListBtn').onclick = () => {
-    updateModeTabs();
-    renderSectorList();
-    document.getElementById('lap-list-overlay').style.display = 'flex';
+window.onload = () => {
+    courseMode = localStorage.getItem('klap_course_mode') || 'marathon';
+    targetCircuitLaps = Math.max(0, Math.floor(Number(localStorage.getItem('klap_circuit_laps')) || 0));
+    const rawInterval = Number(localStorage.getItem('marathon_lap_interval_m'));
+    lapIntervalM = (!isNaN(rawInterval) && rawInterval > 0) ? rawInterval : 0;
+
+    document.getElementById('debug-intv').textContent = lapIntervalM;
+    document.getElementById('debug-laps').textContent = targetCircuitLaps > 0 ? targetCircuitLaps : '∞';
+
+    loadAllCourseLines();
+    initMap();
+    mainLoop();
 };
-
-document.getElementById('playBtn').onclick = function() {
-    if (!fullRunData || fullRunData.coords.length === 0) return;
-    isPlaying = !isPlaying;
-    this.innerText = isPlaying ? "PAUSE" : "PLAY";
-    if (isPlaying) animate();
-};
-
-function animate() {
-    if (!isPlaying || !fullRunData) return;
-    if (currentFrame >= fullRunData.speeds.length - 1) {
-        isPlaying = false;
-        document.getElementById('playBtn').innerText = "PLAY";
-        return;
-    }
-    currentFrame++;
-    document.getElementById('seek-bar').value = currentFrame;
-    updateFrame();
-    requestAnimationFrame(animate);
-}
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -1278,6 +1088,5 @@ if ('serviceWorker' in navigator) {
     });
 }
 </script>
-
 </body>
 </html>
