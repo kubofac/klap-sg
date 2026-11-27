@@ -20,7 +20,6 @@
         #data-dashboard {
             position: fixed;
             z-index: 9999;
-            
             background: rgba(0,0,0,0.88);
             border-radius: 8px;
             border: 2px solid #666;
@@ -76,7 +75,7 @@
             border-radius: 3px;
             padding: 1px 4px;
             font-size: 10px;
-            font-weight: bold;
+            font-weight: normal;
             box-shadow: none;
         }
         .custom-sector-label {
@@ -86,7 +85,7 @@
             border-radius: 3px;
             padding: 1px 4px;
             font-size: 10px;
-            font-weight: bold;
+            font-weight: normal;
             box-shadow: none;
         }
         .leaflet-tooltip.sector-pin-label::before,
@@ -163,14 +162,14 @@
         .summary-card.slow-card { border-color: var(--hrc-blue); }
 
         #lap-list-content { flex: 1; overflow-y: auto; border-top: 1px solid #333; }
-        .lap-row { display: grid; grid-template-columns: 76px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; align-items: center; }
+        .lap-row { display: grid; grid-template-columns: 76px 66px 76px 76px 72px 46px 72px 76px; gap: 4px; padding: 10px 4px; border-bottom: 1px solid #222; cursor: pointer; text-align: center; font-size: 11px; color: #fff; font-weight: normal; align-items: center; }
         .list-header { font-weight: bold; color: #aaa; background: #161616; cursor: default; position: sticky; top: 0; z-index: 2; }
         .lap-row.row-best { background: rgba(255, 68, 68, 0.14); }
         .lap-row.row-slow { background: rgba(51, 204, 255, 0.14); }
 
-        .lap-best { color: var(--hrc-red) !important; font-weight: bold; }
-        .lap-slow { color: var(--hrc-blue) !important; font-weight: bold; }
-        .stat-best { background: var(--hrc-orange); color: #000 !important; font-weight: bold; border-radius: 2px; }
+        .lap-best { color: var(--hrc-red) !important; font-weight: normal; }
+        .lap-slow { color: var(--hrc-blue) !important; font-weight: normal; }
+        .stat-best { background: var(--hrc-orange); color: #000 !important; font-weight: normal; border-radius: 2px; }
 
         #controls { position: fixed; bottom: 0; left: 0; width: 100%; height: 105px; background: #111; z-index: 999; padding: 5px; box-sizing: border-box; }
         .ctrl-row { display: flex; align-items: center; gap: 5px; height: 45px; overflow-x: auto; }
@@ -262,10 +261,12 @@ let analysisMode = 'dist'; // 'dist' | 'sector' | 'circuit'
 
 let currentFrame = 0, isPlaying = false, idxA = null, idxB = null;
 let latOffset = 0, lonOffset = 0;
-let gpxLapIntervalM = 1000;
+let gpxLapIntervalM = 0;
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
 let gpxLines = { startLine: null, goalLine: null, lapLine: null, sectors: {} };
 const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
+const SECTOR_COOLDOWN_SEC = 3.0;
+const LAP_COOLDOWN_SEC = 5.0;
 
 window.onload = () => {
     map = L.map('map', {
@@ -402,18 +403,19 @@ function updateModeTabs() {
     if (analysisMode === 'circuit') {
         titleEl.textContent = 'CIRCUIT LAPS (LAP LINE)';
     } else if (analysisMode === 'sector') {
-        titleEl.textContent = 'CUSTOM SECTORS (SEC 1 - 10)';
+        titleEl.textContent = 'CUSTOM SECTORS (S1 - S10)';
     } else {
         titleEl.textContent = 'DISTANCE SECTORS (START → GOAL)';
     }
 }
 
 function parseMarathonMeta(xml) {
-    gpxLapIntervalM = Math.max(1, Number(localStorage.getItem('marathon_lap_interval_m')) || 1000);
+    const stored = Number(localStorage.getItem('marathon_lap_interval_m'));
+    gpxLapIntervalM = (!isNaN(stored) && stored >= 0) ? stored : 0;
     const desc = xml.getElementsByTagName('desc')[0]?.textContent || '';
     const match = desc.match(/LAP_INTERVAL_M:(\d+)/i);
-    if (match && Number(match[1]) > 0) {
-        gpxLapIntervalM = Number(match[1]);
+    if (match) {
+        gpxLapIntervalM = Math.max(0, Number(match[1]));
     }
 }
 
@@ -585,7 +587,7 @@ function processFullRunGPX(xml) {
             const prevTimeSec = run.timesSec[prevIdx];
             const stepM = calcDistanceMeters(prevCoord[0], prevCoord[1], lat, lon);
 
-            if (stepM >= 0.3 && stepM < 200) {
+            if (stepM >= 0.3 && stepM < 250) {
                 totalDistM += stepM;
             }
             if (!isNaN(rawSpeedMps) && rawSpeedMps >= 0) {
@@ -618,9 +620,11 @@ function processFullRunGPX(xml) {
     buildCircuitLaps(run);
 }
 
-// 1. 距離セクター算出
+// 1. 距離セクター算出（gpxLapIntervalM === 0 なら表示なし）
 function buildDistanceSectors(run) {
     distanceSectors = [];
+    if (!gpxLapIntervalM || gpxLapIntervalM <= 0) return;
+
     let lapNo = 1;
     let nextTargetDistM = gpxLapIntervalM;
     let segStartIdx = 0;
@@ -694,7 +698,7 @@ function buildDistanceSectors(run) {
     }
 }
 
-// 2. 任意セクター（SEC 1 ～ SEC 10・周回ごとの再通過＆3秒クールダウン対応）
+// 2. 任意セクター（S1 ～ S10・周回ごとの再通過＆クールダウン対応）
 function buildCustomSectors(run) {
     customSectors = [];
     const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
@@ -712,7 +716,7 @@ function buildCustomSectors(run) {
                     validDir = hit.dir;
                     lapCrossSecs.push(interpSec);
                     lastLapSec = interpSec;
-                } else if (hit.dir === validDir && (interpSec - lastLapSec > 4.0)) {
+                } else if (hit.dir === validDir && (interpSec - lastLapSec > LAP_COOLDOWN_SEC)) {
                     lapCrossSecs.push(interpSec);
                     lastLapSec = interpSec;
                 }
@@ -741,14 +745,14 @@ function buildCustomSectors(run) {
             if (hit) {
                 const interpSec = run.timesSec[i - 1] + (run.timesSec[i] - run.timesSec[i - 1]) * hit.t;
                 const prevSameSec = lastHitSecByKey[key] ?? -999;
-                if (interpSec - prevSameSec < 10.0 || interpSec - lastAnyHitSec < 10.0) return;
+                if (interpSec - prevSameSec < SECTOR_COOLDOWN_SEC || interpSec - lastAnyHitSec < SECTOR_COOLDOWN_SEC) return;
 
                 lastHitSecByKey[key] = interpSec;
                 lastAnyHitSec = interpSec;
 
                 const secNum = parseInt(key.replace(/\D/g, ''), 10);
                 const lapNo = getLapNumberAtSec(interpSec);
-                const label = lapNo ? `SEC${secNum}(L${lapNo})` : `SEC${secNum}`;
+                const label = lapNo ? `S${secNum}(L${lapNo})` : `S${secNum}`;
                 const interpDist = run.dists[i - 1] + (run.dists[i] - run.dists[i - 1]) * hit.t;
 
                 hits.push({
@@ -822,7 +826,7 @@ function buildCustomSectors(run) {
     }
 }
 
-// 3. 周回ラップ（LAP_LINE）算出
+// 3. 周回ラップ（LAP_LINE）算出（L1, L2...）
 function buildCircuitLaps(run) {
     circuitLaps = [];
     if (!gpxLines.lapLine) return;
@@ -840,7 +844,7 @@ function buildCircuitLaps(run) {
                 validDir = hit.dir;
                 crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
                 lastCrossSec = interpSec;
-            } else if (hit.dir === validDir && (interpSec - lastCrossSec > 4.0)) {
+            } else if (hit.dir === validDir && (interpSec - lastCrossSec > LAP_COOLDOWN_SEC)) {
                 crossings.push({ sec: interpSec, dist: interpDist, coord: hit.coord, frameIndex: i });
                 lastCrossSec = interpSec;
             }
@@ -897,10 +901,10 @@ function renderSectorList() {
         bestBox.innerText = "-";
         slowBox.innerText = "-";
         const emptyMsg = analysisMode === 'sector'
-            ? "任意セクター（SEC1〜SEC10）の通過データがありません"
+            ? "任意セクター（S1〜S10）の通過データがありません"
             : analysisMode === 'circuit'
                 ? "周回ライン（LAP_LINE）の周回データがありません"
-                : "セクターデータがありません";
+                : "距離セクター設定が0m（なし）またはデータがありません";
         c.innerHTML = `<div style="padding:20px; text-align:center; color:#888;">${emptyMsg}</div>`;
         return;
     }
@@ -923,8 +927,8 @@ function renderSectorList() {
         }
     });
 
-    bestBox.innerHTML = `${bestSec.label} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red); font-weight:bold;">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
-    slowBox.innerHTML = `${slowSec.label} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue); font-weight:bold;">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
+    bestBox.innerHTML = `${bestSec.label} (${bestSec.targetDistM}m) : <span style="color:var(--hrc-red);">${formatLapTime(bestSec.durationSec)}</span> (${formatPace(bestSec.paceSecPerKm)}/km)`;
+    slowBox.innerHTML = `${slowSec.label} (${slowSec.targetDistM}m) : <span style="color:var(--hrc-blue);">${formatLapTime(slowSec.durationSec)}</span> (${formatPace(slowSec.paceSecPerKm)}/km)`;
 
     const globalMaxS = Math.max(...activeList.map(s => s.maxSpeed));
 
@@ -935,7 +939,7 @@ function renderSectorList() {
         const isSlow = (sec.lapNo === slowSec.lapNo && activeList.length > 1);
         const row = document.createElement('div');
         row.className = `lap-row ${isBest ? 'row-best' : ''} ${isSlow ? 'row-slow' : ''}`;
-        const labelStyle = analysisMode === 'sector' ? 'color:var(--hrc-cyan); font-weight:bold;' : '';
+        const labelStyle = analysisMode === 'sector' ? 'color:var(--hrc-cyan);' : '';
 
         row.innerHTML = `
             <span style="${labelStyle}">${sec.label}</span>
@@ -1061,7 +1065,7 @@ function updateUI() {
             weight: 4,
             dashArray: '6, 6',
             opacity: 0.95
-        }).bindTooltip(`SEC${idx + 1}`, {
+        }).bindTooltip(`S${idx + 1}`, {
             permanent: true,
             direction: 'center',
             className: 'custom-sector-label'
@@ -1128,7 +1132,7 @@ function createCharts() {
                 position: 'start',
                 backgroundColor: 'rgba(0, 20, 28, 0.85)',
                 color: '#00e5ff',
-                font: { size: 9, weight: 'bold' },
+                font: { size: 9, weight: 'normal' },
                 padding: 2
             }
         };
@@ -1227,4 +1231,3 @@ if ('serviceWorker' in navigator) {
 
 </body>
 </html>
-```[cite: 4]
