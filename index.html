@@ -41,16 +41,19 @@
         .ui-btn.point-active { background: #0077cc; color: #fff; border-color: #0077cc; }
         .ui-btn.primary { background: var(--hrc-red); color: #fff; border-color: var(--hrc-red); }
         .ui-btn.blue { background: #0077cc; color: #fff; border-color: #0077cc; }
+        .ui-btn.danger { background: #d9534f; color: #fff; border-color: #d9534f; }
 
-        .panel-box { background: rgba(255,255,255,0.95); border: 1px solid #bbb; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); touch-action: manipulation; }
+        .panel-box { background: rgba(255,255,255,0.95); border: 1px solid #bbb; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); touch-action: manipulation; max-width: 100%; box-sizing: border-box; }
         .panel-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
         .panel-row:last-child { margin-bottom: 0; }
-        select, input[type="number"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; touch-action: manipulation; }
+        select, input[type="number"], input[type="text"] { border: 1px solid #aaa; border-radius: 4px; padding: 5px 6px; font-size: 12px; background: #fff; color: #000; touch-action: manipulation; }
         input[type="number"] { width: 82px; }
+        input[type="text"] { width: 170px; }
 
         .status-badge { font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 4px; background: #eee; color: #222; }
         .status-badge.ok { background: #e6f7ec; color: #137333; border: 1px solid #34a853; }
         .coord-text { font-family: monospace; font-size: 10px; color: #333; background: #f7f7f7; padding: 3px 6px; border-radius: 4px; border: 1px solid #ddd; }
+        .my-course-box { background: #eef7ff; border: 1px solid #bce0ff; border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
@@ -95,6 +98,21 @@
                     <select id="sectorNumSelect"></select>
                 </label>
             </div>
+
+            <div class="panel-row">
+                <div class="my-course-box">
+                    <span style="font-weight:bold; color:#1565C0;">マイコース:</span>
+                    <select id="courseSelect">
+                        <option value="">-- 保存済みコースを選択 --</option>
+                    </select>
+                    <button id="applyCourseBtn" type="button" class="ui-btn blue">反映</button>
+                    <button id="deleteCourseBtn" type="button" class="ui-btn danger" style="display:none;">削除</button>
+                    <input type="text" id="newCourseName" placeholder="新規コース名">
+                    <button id="saveNewCourseBtn" type="button" class="ui-btn">追加保存</button>
+                    <span id="selectedCourseDisplay" class="coord-text">未選択</span>
+                </div>
+            </div>
+
             <div class="panel-row">
                 <span id="p1CoordText" class="coord-text">P1: -</span>
                 <span id="p2CoordText" class="coord-text">P2: -</span>
@@ -121,6 +139,8 @@ if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
 }
 
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
+const CUSTOM_COURSE_STORAGE_KEY = 'customMarathonList';
+
 let map = null;
 let drawMode = 'startLine'; // 'startLine' | 'goalLine' | 'turnLine' | 'lapLine' | 'sector'
 let activePoint = 'p1'; // 'p1' | 'p2'
@@ -155,8 +175,8 @@ function setLineByKey(key, val) {
 function cloneLine(line) {
     if (!line || !line.p1 || !line.p2) return null;
     return {
-        p1: { lat: line.p1.lat, lon: line.p1.lon },
-        p2: { lat: line.p2.lat, lon: line.p2.lon }
+        p1: { lat: Number(line.p1.lat), lon: Number(line.p1.lon) },
+        p2: { lat: Number(line.p2.lat), lon: Number(line.p2.lon) }
     };
 }
 
@@ -234,15 +254,7 @@ function updatePointUI() {
 
     const key = getActiveLineKey();
     const line = getLineByKey(key);
-    const p1El = document.getElementById('p1CoordText');
-    const p2El = document.getElementById('p2CoordText');
-
-    p1El.textContent = (line && line.p1)
-        ? `P1: ${line.p1.lat.toFixed(6)}, ${line.p1.lon.toFixed(6)}`
-        : 'P1: 未設定';
-    p2El.textContent = (line && line.p2)
-        ? `P2: ${line.p2.lat.toFixed(6)}, ${line.p2.lon.toFixed(6)}`
-        : 'P2: 未設定';
+    updateCoordLabelsOnly(line);
 }
 
 function updateCoordLabelsOnly(line) {
@@ -439,7 +451,7 @@ function setDrawMode(mode) {
         lapLine: 'LAPライン',
     };
     const name = labelMap[activeKey] || activeKey.replace('sec', 'S').replace('Line', 'ライン');
-    document.getElementById('drawGuide').textContent = `${name} の ${activePoint.toUpperCase()} をピン拖动・中心配置・地図タップで指定できます`;
+    document.getElementById('drawGuide').textContent = `${name} の ${activePoint.toUpperCase()} をピンドラッグ・中心配置・地図タップで指定できます`;
     updatePointUI();
     redrawLines();
 }
@@ -460,6 +472,140 @@ function initSelectorOptions() {
     }
 }
 
+// マイコース（customMarathonList）管理
+function getCustomCourseList() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CUSTOM_COURSE_STORAGE_KEY));
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function toggleDeleteCourseButton() {
+    const id = document.getElementById('courseSelect').value;
+    document.getElementById('deleteCourseBtn').style.display = id ? 'inline-block' : 'none';
+}
+
+function updateCourseSelectMenu(selectedId = '') {
+    const select = document.getElementById('courseSelect');
+    select.innerHTML = '<option value="">-- 保存済みコースを選択 --</option>';
+    const list = getCustomCourseList();
+    list.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        const lapsInfo = item.targetLaps > 0 ? `${item.targetLaps}周` : '∞';
+        const tag = item.courseMode === 'circuit' ? `[周回:${lapsInfo}]` : '[区間]';
+        opt.textContent = `${tag} ${item.name}`;
+        select.appendChild(opt);
+    });
+    if (selectedId) {
+        select.value = selectedId;
+    }
+    toggleDeleteCourseButton();
+}
+
+function saveNewCustomCourse() {
+    const nameInput = document.getElementById('newCourseName');
+    const name = nameInput.value.trim();
+    if (!name) {
+        alert("コース名を入力してください。");
+        return;
+    }
+
+    applyTurnReturnRules(false);
+
+    const id = 'course_' + Date.now();
+    const sectorsObj = {};
+    SECTOR_KEYS.forEach(k => {
+        const s = lines.sectors[k];
+        sectorsObj[k] = (s && s.p1 && s.p2) ? cloneLine(s) : null;
+    });
+
+    const courseMode = document.getElementById('courseModeSelect').value || 'marathon';
+    const targetLaps = Math.max(0, Math.floor(Number(document.getElementById('circuitLapsInput').value) || 0));
+    const lapIntervalM = Math.max(0, Math.floor(Number(document.getElementById('lapIntervalInput').value) || 0));
+
+    const payload = {
+        id,
+        name,
+        courseMode,
+        targetLaps,
+        startLine: (lines.startLine && lines.startLine.p1 && lines.startLine.p2) ? cloneLine(lines.startLine) : null,
+        goalLine: (lines.goalLine && lines.goalLine.p1 && lines.goalLine.p2) ? cloneLine(lines.goalLine) : null,
+        turnLine: (lines.turnLine && lines.turnLine.p1 && lines.turnLine.p2) ? cloneLine(lines.turnLine) : null,
+        lapLine: (lines.lapLine && lines.lapLine.p1 && lines.lapLine.p2) ? cloneLine(lines.lapLine) : null,
+        sectors: sectorsObj,
+        lapIntervalM
+    };
+
+    const list = getCustomCourseList();
+    list.push(payload);
+    localStorage.setItem(CUSTOM_COURSE_STORAGE_KEY, JSON.stringify(list));
+
+    nameInput.value = '';
+    updateCourseSelectMenu(id);
+    document.getElementById('selectedCourseDisplay').textContent = `${name} 保存完了`;
+    alert(`マイコース「${name}」を保存しました。`);
+}
+
+function applySelectedCustomCourse() {
+    const id = document.getElementById('courseSelect').value;
+    if (!id) {
+        alert("反映するマイコースを選択してください。");
+        return;
+    }
+    const list = getCustomCourseList();
+    const item = list.find(c => c.id === id);
+    if (!item) return;
+
+    lines = {
+        startLine: cloneLine(item.startLine),
+        goalLine: cloneLine(item.goalLine),
+        turnLine: cloneLine(item.turnLine),
+        lapLine: cloneLine(item.lapLine),
+        sectors: {}
+    };
+    SECTOR_KEYS.forEach(k => {
+        lines.sectors[k] = item.sectors ? cloneLine(item.sectors[k]) : null;
+    });
+
+    applyTurnReturnRules(false);
+
+    const mode = item.courseMode || 'marathon';
+    const targetLaps = Math.max(0, Math.floor(Number(item.targetLaps) || 0));
+    const lapIntervalM = Math.max(0, Math.floor(Number(item.lapIntervalM) || 0));
+
+    document.getElementById('courseModeSelect').value = mode;
+    document.getElementById('circuitLapsInput').value = String(targetLaps);
+    document.getElementById('lapIntervalInput').value = String(lapIntervalM);
+    syncCourseModeUI();
+
+    saveAllSettings();
+    updatePointUI();
+    redrawLines();
+    document.getElementById('selectedCourseDisplay').textContent = `${item.name} 反映完了`;
+
+    const firstSectorLine = SECTOR_KEYS.map(k => lines.sectors[k]).find(Boolean);
+    const focusLine = lines.lapLine || lines.startLine || lines.turnLine || firstSectorLine || lines.goalLine;
+    if (focusLine && focusLine.p1) {
+        map.setView([focusLine.p1.lat, focusLine.p1.lon], 17);
+    }
+}
+
+function deleteSelectedCustomCourse() {
+    const selectEl = document.getElementById('courseSelect');
+    const id = selectEl.value;
+    if (!id) return;
+    const name = selectEl.options[selectEl.selectedIndex].text;
+    if (!confirm(`マイコース「${name}」を削除しますか？`)) return;
+
+    const filtered = getCustomCourseList().filter(c => c.id !== id);
+    localStorage.setItem(CUSTOM_COURSE_STORAGE_KEY, JSON.stringify(filtered));
+    updateCourseSelectMenu('');
+    document.getElementById('selectedCourseDisplay').textContent = '未選択';
+}
+
 function loadSavedState() {
     ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(key => {
         lines[key] = readLineFromStorage(key);
@@ -477,6 +623,7 @@ function loadSavedState() {
 
     applyTurnReturnRules(false);
     syncCourseModeUI();
+    updateCourseSelectMenu('');
     updatePointUI();
     redrawLines();
 }
@@ -566,6 +713,11 @@ window.onload = () => {
     document.getElementById('sectorNumSelect').onchange = () => {
         if (drawMode === 'sector') setDrawMode('sector');
     };
+
+    document.getElementById('courseSelect').onchange = toggleDeleteCourseButton;
+    document.getElementById('applyCourseBtn').onclick = (e) => { e.stopPropagation(); applySelectedCustomCourse(); };
+    document.getElementById('deleteCourseBtn').onclick = (e) => { e.stopPropagation(); deleteSelectedCustomCourse(); };
+    document.getElementById('saveNewCourseBtn').onclick = (e) => { e.stopPropagation(); saveNewCustomCourse(); };
 
     document.getElementById('clearLineBtn').onclick = (e) => {
         e.stopPropagation();
