@@ -23,7 +23,7 @@
             background: rgba(0,0,0,0.88);
             border-radius: 8px;
             border: 2px solid #666;
-            min-width: 155px;
+            min-width: 175px;
             touch-action: none;
             top: 20px;
             right: 20px;
@@ -171,15 +171,15 @@
         .lap-slow { color: var(--hrc-blue) !important; font-weight: normal; }
         .stat-best { background: var(--hrc-orange); color: #000 !important; font-weight: normal; border-radius: 2px; }
 
-        #controls { position: fixed; bottom: 0; left: 0; width: 100%; height: 105px; background: #111; z-index: 999; padding: 5px; box-sizing: border-box; }
-        .ctrl-row { display: flex; align-items: center; gap: 5px; height: 45px; overflow-x: auto; }
-        .mini-btn { background: #444; color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; height: 35px; cursor: pointer; font-weight: bold; flex-shrink: 0; }
+        #controls { position: fixed; bottom: 0; left: 0; width: 100%; height: 105px; background: #111; z-index: 999; padding: 5px; box-sizing: border-box; touch-action: manipulation; }
+        .ctrl-row { display: flex; align-items: center; gap: 5px; height: 45px; overflow-x: auto; touch-action: manipulation; }
+        .mini-btn { background: #444; color: white; border: none; padding: 0 12px; border-radius: 4px; font-size: 11px; height: 35px; cursor: pointer; font-weight: bold; flex-shrink: 0; touch-action: manipulation; }
         #seek-bar {
             width: 100%;
             height: 44px;
             accent-color: var(--hrc-red);
             cursor: pointer;
-            touch-action: pan-x;
+            touch-action: manipulation;
         }
     </style>
 </head>
@@ -188,10 +188,10 @@
 <div id="main-container">
     <div id="map">
         <div id="map-adjust-ctrls">
-            <button class="adj-btn" style="grid-column: 2; grid-row: 1;" onclick="adjustMap(0.00001, 0)">↑</button>
-            <button class="adj-btn" style="grid-column: 1; grid-row: 2;" onclick="adjustMap(0, -0.00001)">←</button>
-            <button class="adj-btn" style="grid-column: 2; grid-row: 2;" onclick="adjustMap(-0.00001, 0)">↓</button>
-            <button class="adj-btn" style="grid-column: 3; grid-row: 2;" onclick="adjustMap(0, 0.00001)">→</button>
+            <button class="adj-btn" type="button" style="grid-column: 2; grid-row: 1;" onclick="adjustMap(0.00001, 0)">↑</button>
+            <button class="adj-btn" type="button" style="grid-column: 1; grid-row: 2;" onclick="adjustMap(0, -0.00001)">←</button>
+            <button class="adj-btn" type="button" style="grid-column: 2; grid-row: 2;" onclick="adjustMap(-0.00001, 0)">↓</button>
+            <button class="adj-btn" type="button" style="grid-column: 3; grid-row: 2;" onclick="adjustMap(0, 0.00001)">→</button>
         </div>
     </div>
     <div id="chart-area">
@@ -204,6 +204,7 @@
                 <div class="dash-grid"><span class="grid-label">DIST</span><span id="p-dist">0m</span></div>
                 <hr style="border:0; border-top:1px solid #333;">
                 <div class="dash-grid" style="color:var(--hrc-yellow)"><span class="grid-label">A-B</span><span id="p-ab">-</span></div>
+                <div class="dash-grid" style="color:#ccc; font-size:10px;"><span class="grid-label">A / B</span><span id="p-ab-pts">A:- / B:-</span></div>
             </div>
         </div>
         <div style="height:100%; width:100%;"><canvas id="mainChart"></canvas></div>
@@ -212,23 +213,23 @@
 
 <div id="controls">
     <div class="ctrl-row">
-        <button class="mini-btn" id="playBtn" style="background:var(--hrc-red)">PLAY</button>
-        <button class="mini-btn" id="fileBtn">OPEN GPX</button>
-        <button class="mini-btn" id="openListBtn" style="background:var(--hrc-blue)">LAP LIST</button>
-        <button class="mini-btn" id="btnSetA" style="background:var(--hrc-yellow); color:#000">SET A</button>
-        <button class="mini-btn" id="btnSetB" style="background:var(--hrc-yellow); color:#000">SET B</button>
-        <button class="mini-btn" onclick="location.reload()">RESET</button>
+        <button class="mini-btn" type="button" id="playBtn" style="background:var(--hrc-red)">PLAY</button>
+        <button class="mini-btn" type="button" id="fileBtn">OPEN GPX</button>
+        <button class="mini-btn" type="button" id="openListBtn" style="background:var(--hrc-blue)">LAP LIST</button>
+        <button class="mini-btn" type="button" id="btnSetA" style="background:var(--hrc-yellow); color:#000">SET A</button>
+        <button class="mini-btn" type="button" id="btnSetB" style="background:var(--hrc-yellow); color:#000">SET B</button>
+        <button class="mini-btn" type="button" onclick="location.reload()">RESET</button>
     </div>
-    <input type="range" id="seek-bar" value="0">
+    <input type="range" id="seek-bar" min="0" max="0" value="0">
     <input type="file" id="fileInput" accept=".gpx" style="display:none">
 </div>
 
 <div id="lap-list-overlay">
     <h3 id="overlay-title" style="text-align:center; color:#fff; margin:0;">DISTANCE SECTORS (START → GOAL)</h3>
     <div class="mode-tabs">
-        <button class="mode-tab-btn active" id="tab-dist" onclick="switchAnalysisMode('dist')">距離セクター</button>
-        <button class="mode-tab-btn" id="tab-sector" onclick="switchAnalysisMode('sector')">任意セクター</button>
-        <button class="mode-tab-btn" id="tab-circuit" onclick="switchAnalysisMode('circuit')">周回ラップ</button>
+        <button class="mode-tab-btn active" type="button" id="tab-dist" onclick="switchAnalysisMode('dist')">距離セクター</button>
+        <button class="mode-tab-btn" type="button" id="tab-sector" onclick="switchAnalysisMode('sector')">任意セクター</button>
+        <button class="mode-tab-btn" type="button" id="tab-circuit" onclick="switchAnalysisMode('circuit')">周回ラップ</button>
     </div>
     <div class="total-run-banner">
         <div>
@@ -248,7 +249,7 @@
         </div>
     </div>
     <div id="lap-list-content"></div>
-    <button class="mini-btn" style="margin-top:12px; width:100%; height:48px; background:var(--hrc-blue); font-size:15px;" onclick="closeLapList()">CLOSE</button>
+    <button class="mini-btn" type="button" style="margin-top:12px; width:100%; height:48px; background:var(--hrc-blue); font-size:15px;" onclick="closeLapList()">CLOSE</button>
 </div>
 
 <script>
@@ -264,9 +265,22 @@ let latOffset = 0, lonOffset = 0;
 let gpxLapIntervalM = 0;
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
 let gpxLines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
-const SMOOTH_HALF_WINDOW = 4; // 前後4点（計9点）移動平均で速度・標高を平滑化
+const SMOOTH_HALF_WINDOW = 4;
 const SECTOR_COOLDOWN_SEC = 3.0;
 const LAP_COOLDOWN_SEC = 5.0;
+
+function applySeekPosition(rawVal) {
+    if (!fullRunData || fullRunData.speeds.length === 0) return;
+    if (isPlaying) {
+        isPlaying = false;
+        document.getElementById('playBtn').innerText = "PLAY";
+    }
+    const maxIdx = Math.max(0, fullRunData.speeds.length - 1);
+    const parsed = parseInt(rawVal, 10);
+    currentFrame = Math.max(0, Math.min(maxIdx, isNaN(parsed) ? 0 : parsed));
+    document.getElementById('seek-bar').value = String(currentFrame);
+    updateFrame();
+}
 
 window.onload = () => {
     map = L.map('map', {
@@ -286,17 +300,20 @@ window.onload = () => {
     makeDraggable(document.getElementById('data-dashboard'), document.getElementById('dash-handle'));
 
     const seekBar = document.getElementById('seek-bar');
-    const handleLinearSeek = (e) => {
-        if (isPlaying) {
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "PLAY";
-        }
-        currentFrame = parseInt(e.target.value, 10) || 0;
-        updateFrame();
+    const onSeekEvent = (e) => {
+        e.stopPropagation();
+        applySeekPosition(e.target.value);
     };
-    seekBar.addEventListener('input', handleLinearSeek);
-    seekBar.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
-    seekBar.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
+    seekBar.addEventListener('input', onSeekEvent);
+    seekBar.addEventListener('change', onSeekEvent);
+    ['mousedown', 'touchstart', 'pointerdown', 'touchmove'].forEach(evt => {
+        seekBar.addEventListener(evt, (e) => {
+            e.stopPropagation();
+            if (e.target && typeof e.target.value !== 'undefined' && fullRunData) {
+                applySeekPosition(e.target.value);
+            }
+        }, { passive: true });
+    });
 };
 
 function makeDraggable(el, handle) {
@@ -340,7 +357,7 @@ function makeDraggable(el, handle) {
     }
 }
 
-function adjustMap(dLat, dLon) { latOffset += dLat; lonOffset += dLon; updateUI(); }
+function adjustMap(dLat, dLon) { latOffset += dLat; lonOffset += dLon; updateUI(true); }
 
 document.getElementById('fileBtn').onclick = () => document.getElementById('fileInput').click();
 document.getElementById('fileInput').onchange = e => {
@@ -373,7 +390,7 @@ document.getElementById('fileInput').onchange = e => {
         }
         updateModeTabs();
         renderSectorList();
-        updateUI();
+        updateUI(false);
         document.getElementById('lap-list-overlay').style.display = 'flex';
     };
     reader.readAsText(file);
@@ -383,7 +400,7 @@ function switchAnalysisMode(mode) {
     analysisMode = mode;
     updateModeTabs();
     renderSectorList();
-    updateUI();
+    updateUI(true);
 }
 
 function updateModeTabs() {
@@ -541,7 +558,6 @@ function processFullRunGPX(xml) {
         });
     }
 
-    // 折り返しライン設定時：GOAL未設定ならSTARTを自動反映し、S1〜S4をS5〜S8へ逆順補完
     if (gpxLines.turnLine) {
         if (!gpxLines.goalLine && gpxLines.startLine) {
             gpxLines.goalLine = cloneCoordLine(gpxLines.startLine);
@@ -643,7 +659,6 @@ function processFullRunGPX(xml) {
     buildCircuitLaps(run);
 }
 
-// 1. 距離セクター算出（gpxLapIntervalM === 0 なら表示なし）
 function buildDistanceSectors(run) {
     distanceSectors = [];
     if (!gpxLapIntervalM || gpxLapIntervalM <= 0) return;
@@ -721,7 +736,6 @@ function buildDistanceSectors(run) {
     }
 }
 
-// 2. 任意セクター・折り返し（折り返し設定時は通過順 S1, S2, S3... 連番）
 function buildCustomSectors(run) {
     customSectors = [];
     const activeSecKeys = SECTOR_KEYS.filter(k => Boolean(gpxLines.sectors[k]));
@@ -875,7 +889,6 @@ function buildCustomSectors(run) {
     }
 }
 
-// 3. 周回ラップ（LAP_LINE）算出（L1, L2...）
 function buildCircuitLaps(run) {
     circuitLaps = [];
     if (!gpxLines.lapLine) return;
@@ -1005,7 +1018,7 @@ function renderSectorList() {
             isPlaying = false;
             document.getElementById('playBtn').innerText = "PLAY";
             currentFrame = sec.frameIndex;
-            document.getElementById('seek-bar').value = currentFrame;
+            document.getElementById('seek-bar').value = String(currentFrame);
             document.getElementById('lap-list-overlay').style.display = 'none';
             updateFrame();
         };
@@ -1019,16 +1032,18 @@ function closeLapList() {
     updateFrame();
 }
 
-function updateUI() {
+function updateUI(preserveFrame = false) {
     if (!fullRunData || fullRunData.coords.length === 0) return;
 
+    const maxIdx = Math.max(0, fullRunData.speeds.length - 1);
     const seekBar = document.getElementById('seek-bar');
     if (seekBar) {
-        seekBar.max = Math.max(0, fullRunData.speeds.length - 1);
-        if (!isPlaying) {
+        seekBar.max = String(maxIdx);
+        if (!preserveFrame && !isPlaying) {
             currentFrame = 0;
-            seekBar.value = 0;
         }
+        currentFrame = Math.max(0, Math.min(maxIdx, currentFrame));
+        seekBar.value = String(currentFrame);
     }
 
     if (window.pathLayer) {
@@ -1164,8 +1179,44 @@ function createCharts() {
 
     if (mainChart) mainChart.destroy();
     const annotations = { now: { type: 'line', xMin: currentFrame, xMax: currentFrame, borderColor: '#fff', borderWidth: 2 } };
-    if (idxA !== null) annotations.lineA = { type: 'line', xMin: idxA, xMax: idxA, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
-    if (idxB !== null) annotations.lineB = { type: 'line', xMin: idxB, xMax: idxB, borderColor: '#ffff00', borderWidth: 1, borderDash: [5, 5] };
+    if (idxA !== null) {
+        annotations.lineA = {
+            type: 'line',
+            xMin: idxA,
+            xMax: idxA,
+            borderColor: '#ffff00',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+                display: true,
+                content: 'A',
+                position: 'start',
+                backgroundColor: '#ffff00',
+                color: '#000',
+                font: { size: 9, weight: 'bold' },
+                padding: 2
+            }
+        };
+    }
+    if (idxB !== null) {
+        annotations.lineB = {
+            type: 'line',
+            xMin: idxB,
+            xMax: idxB,
+            borderColor: '#ff9900',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+                display: true,
+                content: 'B',
+                position: 'start',
+                backgroundColor: '#ff9900',
+                color: '#000',
+                font: { size: 9, weight: 'bold' },
+                padding: 2
+            }
+        };
+    }
 
     customSectors.forEach((sec, idx) => {
         if (sec.label === 'GOAL') return;
@@ -1219,31 +1270,74 @@ function createCharts() {
     });
 }
 
+function updateABDisplay() {
+    const abEl = document.getElementById('p-ab');
+    const ptsEl = document.getElementById('p-ab-pts');
+    if (!fullRunData || fullRunData.timesSec.length === 0) {
+        abEl.innerText = '-';
+        ptsEl.innerText = 'A:- / B:-';
+        return;
+    }
+
+    const maxIdx = fullRunData.timesSec.length - 1;
+    const aText = (idxA !== null) ? formatLapTime(fullRunData.timesSec[Math.min(idxA, maxIdx)]) : '-';
+    const bText = (idxB !== null) ? formatLapTime(fullRunData.timesSec[Math.min(idxB, maxIdx)]) : '-';
+    ptsEl.innerText = `A:${aText} / B:${bText}`;
+
+    if (idxA !== null && idxB !== null) {
+        const aIdx = Math.min(idxA, maxIdx);
+        const bIdx = Math.min(idxB, maxIdx);
+        const diffSec = Math.abs(fullRunData.timesSec[bIdx] - fullRunData.timesSec[aIdx]);
+        const distDiffM = Math.abs(fullRunData.dists[bIdx] - fullRunData.dists[aIdx]);
+        abEl.innerText = `${formatLapTime(diffSec)} (${Math.round(distDiffM)}m)`;
+    } else if (idxA !== null || idxB !== null) {
+        abEl.innerText = 'A/B両方指定';
+    } else {
+        abEl.innerText = '-';
+    }
+}
+
 function updateFrame() {
     if (!fullRunData || fullRunData.coords.length === 0) return;
-    const idx = Math.min(currentFrame, fullRunData.speeds.length - 1);
+    const idx = Math.max(0, Math.min(currentFrame, fullRunData.speeds.length - 1));
+    currentFrame = idx;
     markerP.setLatLng([fullRunData.coords[idx][0] + latOffset, fullRunData.coords[idx][1] + lonOffset]);
+    if (map && typeof map.panTo === 'function') {
+        map.panTo([fullRunData.coords[idx][0] + latOffset, fullRunData.coords[idx][1] + lonOffset], { animate: false });
+    }
 
     document.getElementById('p-time').innerText = formatLapTime(fullRunData.timesSec[idx]);
     document.getElementById('p-spd').innerText = `${Math.round(fullRunData.speeds[idx])}`;
     document.getElementById('p-ele').innerText = `${fullRunData.elevs[idx].toFixed(1)}m`;
     document.getElementById('p-dist').innerText = `${Math.round(fullRunData.dists[idx])}m`;
 
-    if (idxA !== null && idxB !== null) {
-        const aIdx = Math.min(idxA, fullRunData.timesSec.length - 1);
-        const bIdx = Math.min(idxB, fullRunData.timesSec.length - 1);
-        document.getElementById('p-ab').innerText = Math.abs(fullRunData.timesSec[bIdx] - fullRunData.timesSec[aIdx]).toFixed(2) + "s";
-    }
+    updateABDisplay();
 
-    if (mainChart) {
+    if (mainChart && mainChart.options && mainChart.options.plugins && mainChart.options.plugins.annotation) {
         mainChart.options.plugins.annotation.annotations.now.xMin = idx;
         mainChart.options.plugins.annotation.annotations.now.xMax = idx;
-        mainChart.update('resize');
+        mainChart.update('none');
     }
 }
 
-document.getElementById('btnSetA').onclick = () => { idxA = currentFrame; createCharts(); updateFrame(); };
-document.getElementById('btnSetB').onclick = () => { idxB = currentFrame; createCharts(); updateFrame(); };
+document.getElementById('btnSetA').onclick = () => {
+    if (!fullRunData || fullRunData.timesSec.length === 0) return;
+    const seekVal = parseInt(document.getElementById('seek-bar').value, 10);
+    idxA = !isNaN(seekVal) ? seekVal : currentFrame;
+    currentFrame = idxA;
+    createCharts();
+    updateFrame();
+};
+
+document.getElementById('btnSetB').onclick = () => {
+    if (!fullRunData || fullRunData.timesSec.length === 0) return;
+    const seekVal = parseInt(document.getElementById('seek-bar').value, 10);
+    idxB = !isNaN(seekVal) ? seekVal : currentFrame;
+    currentFrame = idxB;
+    createCharts();
+    updateFrame();
+};
+
 document.getElementById('openListBtn').onclick = () => {
     updateModeTabs();
     renderSectorList();
@@ -1265,7 +1359,7 @@ function animate() {
         return;
     }
     currentFrame++;
-    document.getElementById('seek-bar').value = currentFrame;
+    document.getElementById('seek-bar').value = String(currentFrame);
     updateFrame();
     requestAnimationFrame(animate);
 }
