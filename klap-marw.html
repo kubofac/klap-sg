@@ -5,51 +5,223 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <title>KLAP MARATHON GPS TIMER</title>
+    <title>KLAP MARATHON TIMER</title>
     <style>
-        :root { --hrc-red: #D40024; --hrc-black: #000000; --bg-light: #ffffff; --hrc-orange: #D96B00; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-light); color: var(--hrc-black); font-family: 'Arial Black', sans-serif; overflow: hidden; position: fixed; }
-
-        .main-ui-container { position: fixed; left: 15px; bottom: calc(100% - 37.5%); width: calc(100% - 345px); max-width: 62%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; z-index: 5; pointer-events: none; box-sizing: border-box; }
-        #stline-lap { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: var(--hrc-red); }
-        #display1 { font-size: 8vh; font-weight: 900; line-height: 0.9; white-space: nowrap; color: #000; margin-top: 1.2vh; }
-
-        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 0.8vh; gap: 0.2vh; }
-        #display { font-size: 1.8vh; color: #111; font-weight: 900; line-height: 1.05; white-space: nowrap; }
-        #best-display { font-size: 3.1vh; color: #000; font-weight: 900; line-height: 0.95; margin-top: 0.2vh; white-space: nowrap; }
-        .best-label { font-size: 1.3vh; color: var(--hrc-red); margin-right: 6px; }
-
-        #map-wrapper { position: fixed; left: 15px; top: 42.5%; width: calc(100% - 345px); max-width: 62%; border: 1px solid #bbb; border-radius: 6px; overflow: hidden; z-index: 4; background: #eaeaea; box-sizing: border-box; }
-        #map { width: 100%; height: 100%; }
-
-        .right-section-wrapper { position: fixed; right: 15px; top: 15px; bottom: 85px; display: flex; gap: 18px; align-items: stretch; z-index: 6; pointer-events: none; }
-        #lap-panel { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
-        #lap { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; pointer-events: auto; text-align: right; color: #000; font-weight: normal; }
-
-        .lap-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid #ddd; font-size: 2.6vw; font-weight: normal; white-space: nowrap; min-width: 0; }
-        .lap-row span:first-child { color: #555; font-weight: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-        .lap-row span:last-child { font-family: 'Arial', sans-serif; font-weight: normal; text-align: right; color: #000; flex-shrink: 0; }
-        .best-lap span:last-child { color: var(--hrc-red); }
-        .sector-row span:first-child { color: #00838f; font-weight: normal; }
-
-        .data-column { width: 95px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
-        .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
-        .val { font-size: 38px; font-weight: 900; line-height: 0.9; color: #000; }
-        #sec_dist_val { font-size: 22px; color: #1b8a3b; }
-        #dist_val { font-size: 24px; color: #0077cc; }
-
-        #debug-info { position: fixed; bottom: 65px; left: 10px; font-family: monospace; font-size: 10px; color: #555; z-index: 10; pointer-events: none; background: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 3px; }
-
-        footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #fff; border-top: 1px solid #ccc; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; padding-bottom: env(safe-area-inset-bottom); }
-        button { flex: 1; background: #f2f2f2; color: #000; border: 1px solid #bbb; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer; }
-        button.active { background: var(--hrc-red) !important; color: #fff !important; border-color: var(--hrc-red); }
-        button.paused { background: var(--hrc-orange) !important; color: #fff !important; border-color: var(--hrc-orange); }
-
-        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; color: #000; z-index: 10000; padding: 20px; box-sizing: border-box; }
-        .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
-        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #000; font-weight: normal; }
-        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; font-weight: bold; }
-        #history-table td { padding: 8px; border-bottom: 1px solid #ddd; color: #000; font-weight: normal; }
+        :root {
+            --hrc-red: #D40024;
+            --hrc-orange: #D96B00;
+            --hrc-blue: #0077cc;
+            --bg-light: #ffffff;
+            --text-dark: #000000;
+        }
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+        #dashboard {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            padding: env(safe-area-inset-top) 8px env(safe-area-inset-bottom) 8px;
+            gap: 6px;
+        }
+        .main-ui-container {
+            background: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 8px 12px;
+            flex-shrink: 0;
+        }
+        #stline-lap {
+            font-size: 15px;
+            font-weight: bold;
+            color: var(--hrc-blue);
+            font-variant-numeric: tabular-nums;
+        }
+        #display1 {
+            font-size: 42px;
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
+            margin: 2px 0 4px;
+        }
+        .sub-times {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+        }
+        .best-label {
+            background: var(--hrc-red);
+            color: #fff;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            margin-right: 4px;
+        }
+        #map-wrapper {
+            width: 100%;
+            min-height: 90px;
+            border: 1px solid #bbb;
+            border-radius: 8px;
+            overflow: hidden;
+            flex-shrink: 0;
+            background: #eaeaea;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        .right-section-wrapper {
+            display: flex;
+            gap: 6px;
+            flex: 1;
+            min-height: 0;
+        }
+        #lap-panel {
+            flex: 1;
+            background: #fafafa;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 6px 8px;
+            overflow-y: auto;
+            font-variant-numeric: tabular-nums;
+        }
+        .lap-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 6px;
+            border-bottom: 1px solid #e5e5e5;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .lap-row.best-lap {
+            background: #ffe8ec;
+            color: var(--hrc-red);
+        }
+        .lap-row.sector-row {
+            background: #e6f7fa;
+            color: #005f6b;
+        }
+        .data-column {
+            width: 104px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+        .data-box {
+            background: #f4f6f8;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 4px 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .data-box .label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        .data-box .val {
+            font-size: 16px;
+            font-weight: 900;
+            color: #000;
+            font-variant-numeric: tabular-nums;
+        }
+        #debug-info {
+            font-size: 10px;
+            font-family: monospace;
+            background: #222;
+            color: #eee;
+            padding: 4px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            overflow-x: auto;
+            flex-shrink: 0;
+        }
+        footer {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            flex-shrink: 0;
+        }
+        footer button {
+            flex: 1;
+            min-width: 64px;
+            padding: 10px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            border: 1px solid #888;
+            border-radius: 6px;
+            background: #f2f2f2;
+            color: #000;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        footer button.active {
+            background: var(--hrc-red);
+            color: #fff;
+            border-color: var(--hrc-red);
+        }
+        footer button.paused {
+            background: var(--hrc-orange) !important;
+            color: #fff !important;
+            border-color: var(--hrc-orange);
+        }
+        #history-page {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #fff;
+            color: #000;
+            z-index: 10000;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .close-btn {
+            background: var(--hrc-red);
+            color: #fff;
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+        #history-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+        #history-table th {
+            color: var(--hrc-red);
+            border-bottom: 2px solid var(--hrc-red);
+            padding: 8px 4px;
+            font-weight: bold;
+        }
+        #history-table td {
+            padding: 8px 4px;
+            border-bottom: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
@@ -85,23 +257,24 @@
     </div>
 
     <footer>
-        <button id="intGpsBtn">INT GPS</button>
-        <button id="startBtn">START</button>
-        <button id="pauseBtn">PAUSE</button>
-        <button id="lapBtn">LAP</button>
-        <button id="historyBtn">HISTORY</button>
-        <button id="analyzerBtn" onclick="location.href='analyzer.html'">ANALYZER</button>
-        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#fff; border-color:var(--hrc-orange);">GPX</button>
-        <button onclick="location.reload()">RELOAD</button>
+        <button id="intGpsBtn" type="button">INT GPS</button>
+        <button id="startBtn" type="button">START</button>
+        <button id="pauseBtn" type="button">PAUSE</button>
+        <button id="lapBtn" type="button">LAP</button>
+        <button id="historyBtn" type="button">HISTORY</button>
+        <button id="analyzerBtn" type="button" onclick="location.href='analyzer_3.html'">ANALYZER</button>
+        <button id="gpxBtn" type="button" style="display:none; background:var(--hrc-orange); color:#fff; border-color:var(--hrc-orange);">GPX</button>
+        <button id="settingsBtn" type="button" onclick="location.href='index.html'">SET</button>
+        <button id="reloadBtn" type="button" onclick="location.reload()">RELOAD</button>
     </footer>
 </div>
 
 <div id="history-page">
     <div class="close-btn" onclick="document.getElementById('history-page').style.display='none'">CLOSE</div>
-    <div style="overflow-y: auto; height: calc(100% - 80px);">
+    <div style="overflow-y: auto; height: calc(100% - 70px);">
         <table id="history-table">
             <thead>
-                <tr><th>LAP</th><th>DIST</th><th>SPLIT</th><th>LAP TIME</th><th>PACE(/km)</th><th>MAX</th></tr>
+                <tr><th>LAP</th><th>SEC DIST</th><th>SPLIT</th><th>LAP TIME</th><th>PACE(/km)</th><th>MAX</th></tr>
             </thead>
             <tbody id="history-body"></tbody>
         </table>
@@ -110,12 +283,12 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
+'use strict';
+
 if (localStorage.getItem('klap_auth_v1') !== "a2xhcDIwMjY=") {
     alert("認証が必要です。設定画面からパスワードを入力してください。");
     location.href = "index.html";
 }
-
-'use strict';
 
 let swState = 0; // 0:待機, 1:計測中, 2:停止, 3:一時停止(PAUSE)
 let startTime = 0;
@@ -136,7 +309,6 @@ let lastSectorCrossDistM = 0;
 let circuitLapCounter = 0;
 let currentLapStartTime = 0;
 let lastLapCrossTime = 0;
-let sectorBaseDistanceM = 0;
 
 let lapRecords = [];
 
@@ -155,13 +327,13 @@ let targetCircuitLaps = 0; // 0 = 無制限
 const SECTOR_KEYS = Array.from({ length: 10 }, (_, i) => `sec${i + 1}Line`);
 let lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
 let hasAnySectorLine = false;
-let triggeredSectors = {}; // 永久ロック用
-let turnTriggered = false; // 折り返しライン永久ロック用
-let seqSectorCounter = 0; // 折り返し連番用（S1, S2, S3...）
+let triggeredSectors = {};
+let turnTriggered = false;
+let seqSectorCounter = 0;
 let validStartDirection = null;
 let startTriggered = false;
 
-let lapIntervalM = 0; // 0なら自動距離ラップ（D1...）なし
+let lapIntervalM = 0;
 let totalDistanceM = 0;
 let nextLapDistanceM = 0;
 let watchId = null;
@@ -192,14 +364,11 @@ function resetPauseButtonUI() {
 function syncMapAspectRatio() {
     const wrapper = document.getElementById('map-wrapper');
     if (!wrapper) return;
-
     const w = wrapper.clientWidth;
     if (w > 0) {
-        const h = Math.round(w / 3);
+        const h = Math.max(90, Math.min(180, Math.round(w / 3.5)));
         wrapper.style.height = `${h}px`;
-        wrapper.style.maxHeight = 'none';
     }
-
     if (map) {
         map.invalidateSize();
     }
@@ -327,23 +496,23 @@ function getIntersection(p1, p2, line) {
     return null;
 }
 
-// 距離ラップ（D1, D2...）記録：距離間のタイムのみ算出
 function recordDistanceSegmentLap(hitTime, targetDistM, segDistanceM, isManual) {
     const baseTime = lastDistanceLapTime || startLineCrossTime || startTime;
     const lapMs = Math.max(0, hitTime - baseTime);
     const splitBase = startLineCrossTime || startTime;
     const splitMs = Math.max(0, hitTime - splitBase);
+    const cleanSegDistM = Math.max(0, Math.round(segDistanceM));
 
     distLapCounter++;
-    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const distKm = Math.max(0.001, cleanSegDistM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
     const record = {
         no: distLapCounter,
-        label: `D${distLapCounter}(${Math.round(targetDistM)}m)`,
+        label: `D${distLapCounter}(${cleanSegDistM}m)`,
         kind: 'distance',
         targetDistM: Math.round(targetDistM),
-        segDistanceM: Math.round(segDistanceM),
+        segDistanceM: cleanSegDistM,
         splitMs: splitMs,
         lapMs: lapMs,
         paceSecPerKm: paceSecPerKm,
@@ -362,27 +531,27 @@ function recordDistanceSegmentLap(hitTime, targetDistM, segDistanceM, isManual) 
     }
 
     lastDistanceLapTime = hitTime;
-    distanceBaseM = targetDistM;
+    distanceBaseM = totalDistanceM;
     currentLapPoints = [];
     maxSpeedInLap = 0;
 }
 
-// 任意セクター・折り返し記録：セクター間のタイムのみ算出
 function recordCustomSectorLap(hitTime, targetDistM, segDistanceM, tagName) {
     const baseTime = lastSectorCrossTime || startLineCrossTime || startTime;
     const lapMs = Math.max(0, hitTime - baseTime);
     const splitBase = startLineCrossTime || startTime;
     const splitMs = Math.max(0, hitTime - splitBase);
+    const cleanSegDistM = Math.max(0, Math.round(segDistanceM));
 
-    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const distKm = Math.max(0.001, cleanSegDistM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
     const record = {
         no: lapRecords.length + 1,
-        label: `${tagName}(${Math.round(targetDistM)}m)`,
+        label: `${tagName}(${cleanSegDistM}m)`,
         kind: 'sector',
         targetDistM: Math.round(targetDistM),
-        segDistanceM: Math.round(segDistanceM),
+        segDistanceM: cleanSegDistM,
         splitMs: splitMs,
         lapMs: lapMs,
         paceSecPerKm: paceSecPerKm,
@@ -395,26 +564,26 @@ function recordCustomSectorLap(hitTime, targetDistM, segDistanceM, tagName) {
     localStorage.setItem('marathon_last_laps', JSON.stringify([...lapRecords].reverse()));
 
     lastSectorCrossTime = hitTime;
-    lastSectorCrossDistM = targetDistM;
+    lastSectorCrossDistM = totalDistanceM;
 }
 
-// 周回ラップ（L1, L2...）記録
 function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
     const baseTime = currentLapStartTime || startTime;
     const lapMs = Math.max(0, hitTime - baseTime);
     const splitBase = startLineCrossTime || startTime;
     const splitMs = Math.max(0, hitTime - splitBase);
+    const cleanSegDistM = Math.max(0, Math.round(segDistanceM));
 
     circuitLapCounter++;
-    const distKm = Math.max(0.001, segDistanceM / 1000);
+    const distKm = Math.max(0.001, cleanSegDistM / 1000);
     const paceSecPerKm = (lapMs / 1000) / distKm;
 
     const record = {
         no: circuitLapCounter,
-        label: `L${circuitLapCounter}(${Math.round(targetDistM)}m)`,
+        label: `L${circuitLapCounter}(${cleanSegDistM}m)`,
         kind: 'circuit',
         targetDistM: Math.round(targetDistM),
-        segDistanceM: Math.round(segDistanceM),
+        segDistanceM: cleanSegDistM,
         splitMs: splitMs,
         lapMs: lapMs,
         paceSecPerKm: paceSecPerKm,
@@ -432,8 +601,8 @@ function recordCircuitLap(hitTime, targetDistM, segDistanceM) {
 
     currentLapStartTime = hitTime;
     lastSectorCrossTime = hitTime;
-    lastSectorCrossDistM = targetDistM;
-    sectorBaseDistanceM = targetDistM;
+    lastSectorCrossDistM = totalDistanceM;
+    distanceBaseM = totalDistanceM;
     triggeredSectors = {};
     turnTriggered = false;
     seqSectorCounter = 0;
@@ -455,9 +624,10 @@ function updateLapList() {
     document.getElementById('lap').innerHTML = lapRecords.map(r => {
         const isSector = (r.kind === 'sector');
         const rowClass = isSector ? 'sector-row' : (r.lapMs === best ? 'best-lap' : '');
+        const displayLabel = `${r.label.split('(')[0]}(${r.segDistanceM}m)`;
         return `
         <div class="lap-row ${rowClass}">
-            <span>${r.label}</span>
+            <span>${displayLabel}</span>
             <span>${timeFormat(r.lapMs)}</span>
         </div>`;
     }).join('');
@@ -469,6 +639,13 @@ function formatPace(secPerKm) {
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
     return `${min}'${sec.toString().padStart(2, '0')}"`;
+}
+
+function getCurrentSectorDistM() {
+    const baseM = (courseMode === 'circuit')
+        ? Math.max(lastSectorCrossDistM, 0)
+        : lastSectorCrossDistM;
+    return Math.max(0, Math.round(totalDistanceM - baseM));
 }
 
 function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = null, rawAltitudeM = null) {
@@ -530,7 +707,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         while (totalDistanceM >= nextLapDistanceM) {
                             const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
                             const interpTime = prevTime + (cur.time - prevTime) * ratio;
-                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, segDist, false);
                             nextLapDistanceM += lapIntervalM;
                         }
                     }
@@ -546,7 +724,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
                         if (sinceStartOk && sinceLastSecOk) {
                             triggeredSectors[key] = true;
-                            const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                            const secSegDist = Math.max(0, Math.round(totalDistanceM - lastSectorCrossDistM));
                             recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, `S${idx + 1}(L${circuitLapCounter + 1})`);
                         }
                     }
@@ -567,7 +745,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             lastSectorCrossTime = hitLap.time;
                             lastSectorCrossDistM = 0;
                             totalDistanceM = 0;
-                            sectorBaseDistanceM = 0;
                             distanceBaseM = 0;
                             nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
                             triggeredSectors = {};
@@ -575,7 +752,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             seqSectorCounter = 0;
                         }
                     } else if (hitLap.dir === validStartDirection && (hitLap.time - lastLapCrossTime > lapCooldownMs)) {
-                        const segDist = Math.max(1, Math.round(totalDistanceM - sectorBaseDistanceM));
+                        const segDist = Math.max(0, Math.round(totalDistanceM - lastSectorCrossDistM));
                         recordCircuitLap(hitLap.time, Math.round(totalDistanceM), segDist);
                         lastLapCrossTime = hitLap.time;
 
@@ -589,7 +766,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                 }
             }
         } else {
-            // マラソン/区間モード
             if (lines.startLine && lastPos && !startTriggered) {
                 const hitStart = getIntersection(lastPos, cur, lines.startLine);
                 if (hitStart && (hitStart.time - startTime > startCooldownMs)) {
@@ -602,7 +778,6 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         lastSectorCrossTime = hitStart.time;
                         lastSectorCrossDistM = 0;
                         totalDistanceM = 0;
-                        sectorBaseDistanceM = 0;
                         distanceBaseM = 0;
                         nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
                     }
@@ -651,7 +826,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                         while (totalDistanceM >= nextLapDistanceM) {
                             const ratio = Math.max(0, Math.min(1, (nextLapDistanceM - prevTotalM) / stepM));
                             const interpTime = prevTime + (cur.time - prevTime) * ratio;
-                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, lapIntervalM, false);
+                            const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+                            recordDistanceSegmentLap(interpTime, nextLapDistanceM, segDist, false);
                             nextLapDistanceM += lapIntervalM;
                         }
                     }
@@ -659,20 +835,18 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             }
 
             if (lastPos && canAccumulate) {
-                // 折り返しライン（TURN）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
                 if (lines.turnLine && !turnTriggered) {
                     const hitTurn = getIntersection(lastPos, cur, lines.turnLine);
                     const sinceStartOk = (hitTurn && (hitTurn.time - (startLineCrossTime || startTime) > sectorCooldownMs));
                     const sinceLastSecOk = (hitTurn && (hitTurn.time - lastSectorCrossTime > sectorCooldownMs));
                     if (sinceStartOk && sinceLastSecOk) {
                         turnTriggered = true;
-                        const turnSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                        const turnSegDist = Math.max(0, Math.round(totalDistanceM - lastSectorCrossDistM));
                         const labelName = lines.turnLine ? `S${++seqSectorCounter}` : 'TURN';
                         recordCustomSectorLap(hitTurn.time, Math.round(totalDistanceM), turnSegDist, labelName);
                     }
                 }
 
-                // 任意セクター（S1〜S10）通過判定（永久ロック・折り返し設定時は連番 S1, S2, S3...）
                 if (hasAnySectorLine) {
                     SECTOR_KEYS.forEach((key, idx) => {
                         const sLine = lines.sectors[key];
@@ -682,7 +856,7 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
                             const sinceLastSecOk = (hitSec && (hitSec.time - lastSectorCrossTime > sectorCooldownMs));
                             if (sinceStartOk && sinceLastSecOk) {
                                 triggeredSectors[key] = true;
-                                const secSegDist = Math.max(1, Math.round(totalDistanceM - lastSectorCrossDistM));
+                                const secSegDist = Math.max(0, Math.round(totalDistanceM - lastSectorCrossDistM));
                                 const labelName = lines.turnLine ? `S${++seqSectorCounter}` : `S${idx + 1}`;
                                 recordCustomSectorLap(hitSec.time, Math.round(totalDistanceM), secSegDist, labelName);
                             }
@@ -694,8 +868,8 @@ function handlePositionUpdate(currLat, currLon, rawNow, acc = 0, rawSpeedMps = n
             if (lines.goalLine && lastPos && canAccumulate) {
                 const hitGoal = getIntersection(lastPos, cur, lines.goalLine);
                 if (hitGoal) {
-                    const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
-                    recordDistanceSegmentLap(hitGoal.time, Math.round(totalDistanceM), segDist, false);
+                    const segDist = Math.max(0, Math.round(totalDistanceM - lastSectorCrossDistM));
+                    recordCustomSectorLap(hitGoal.time, Math.round(totalDistanceM), segDist, 'GOAL');
                     swState = 2;
                     resetPauseButtonUI();
                     document.getElementById('startBtn').classList.remove('active');
@@ -790,10 +964,10 @@ function mainLoop() {
             isFrozen = false;
         }
     }
-    const secDistM = Math.max(0, totalDistanceM - sectorBaseDistanceM);
+    const secDistM = getCurrentSectorDistM();
     document.getElementById('speed_val').textContent = (swState === 3) ? 0 : Math.round(currentSpeedKmh);
     document.getElementById('max_speed_val').textContent = maxSpeedInLap;
-    document.getElementById('sec_dist_val').textContent = `${Math.round(secDistM)}m`;
+    document.getElementById('sec_dist_val').textContent = `${secDistM}m`;
     document.getElementById('dist_val').textContent = `${Math.round(totalDistanceM)}m`;
     requestAnimationFrame(mainLoop);
 }
@@ -826,7 +1000,6 @@ document.getElementById('startBtn').onclick = function() {
         distLapCounter = 0;
         circuitLapCounter = 0;
         totalDistanceM = 0;
-        sectorBaseDistanceM = 0;
         distanceBaseM = 0;
         nextLapDistanceM = lapIntervalM > 0 ? lapIntervalM : 0;
         maxSpeedInLap = 0;
@@ -883,7 +1056,7 @@ document.getElementById('pauseBtn').onclick = function() {
 document.getElementById('lapBtn').onclick = () => {
     if (swState === 1) {
         const effNow = getEffectiveTime(Date.now());
-        const segDist = Math.max(1, Math.round(totalDistanceM - distanceBaseM));
+        const segDist = Math.max(0, Math.round(totalDistanceM - distanceBaseM));
         recordDistanceSegmentLap(effNow, Math.round(totalDistanceM), segDist, true);
     }
 };
@@ -903,10 +1076,11 @@ document.getElementById('historyBtn').onclick = () => {
         const isBest = (!isSector && r.lapMs === bT);
         const timeStyle = isBest ? 'color:var(--hrc-red);' : '';
         const tagStyle = isSector ? 'color:#00838f;' : '';
+        const secDistDisplay = `${Math.max(0, Math.round(r.segDistanceM || 0))}m`;
         return `
         <tr>
             <td style="${tagStyle}">${r.label}</td>
-            <td>${r.targetDistM}m</td>
+            <td>${secDistDisplay}</td>
             <td>${timeFormat(r.splitMs)}</td>
             <td style="${timeStyle}">${timeFormat(r.lapMs)}</td>
             <td>${formatPace(r.paceSecPerKm)}</td>
@@ -1047,7 +1221,6 @@ function loadAllCourseLines() {
         lines.sectors[key] = readStoredLine(key);
     });
 
-    // 折り返しライン設定時：GOAL未設定ならSTARTを自動反映し、S1〜S4をS5〜S8へ逆順コピー
     if (lines.turnLine) {
         if (!lines.goalLine && lines.startLine) {
             lines.goalLine = cloneLine(lines.startLine);
