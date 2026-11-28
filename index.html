@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <title>KLAP MARATHON SETTINGS</title>
+    <link rel="stylesheet" href="[https://unpkg.com/leaflet@1.7.1/dist/leaflet.css](https://unpkg.com/leaflet@1.7.1/dist/leaflet.css)" />
+    <title>KLAP Road SETTINGS</title>
     <style>
         :root { --hrc-red: #D40024; --hrc-black: #000000; --bg-light: #ffffff; --hrc-orange: #D96B00; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-light); color: var(--hrc-black); font-family: sans-serif; overflow: hidden; }
@@ -161,7 +161,7 @@
     </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="[https://unpkg.com/leaflet@1.7.1/dist/leaflet.js](https://unpkg.com/leaflet@1.7.1/dist/leaflet.js)"></script>
 <script>
 'use strict';
 
@@ -513,8 +513,11 @@ function redrawLines() {
     syncActiveEndpointEditors(activeLine, getLineColor(activeKey));
 }
 
-function setDrawMode(mode) {
+function setDrawMode(mode, resetToP1 = false) {
     drawMode = mode;
+    if (resetToP1) {
+        activePoint = 'p1';
+    }
 
     document.getElementById('modeStartBtn').classList.toggle('active', mode === 'startLine');
     document.getElementById('modeGoalBtn').classList.toggle('active', mode === 'goalLine');
@@ -749,9 +752,9 @@ function initializeAppOnce() {
     guardTopBarEvents();
 
     map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 16);
-    L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    L.tileLayer('[https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/](https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/){z}/{x}/{y}.jpg', {
         maxZoom: 18,
-        attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>'
+        attribution: '<a href="[https://maps.gsi.go.jp/development/ichiran.html](https://maps.gsi.go.jp/development/ichiran.html)" target="_blank">国土地理院</a>'
     }).addTo(map);
 
     map.on('click', (e) => {
@@ -791,13 +794,13 @@ function initializeAppOnce() {
         }, () => {}, { enableHighAccuracy: true });
     };
 
-    document.getElementById('modeStartBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('startLine'); };
-    document.getElementById('modeGoalBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('goalLine'); };
-    document.getElementById('modeTurnBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('turnLine'); };
-    document.getElementById('modeLapBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('lapLine'); };
-    document.getElementById('modeSecBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('sector'); };
+    document.getElementById('modeStartBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('startLine', true); };
+    document.getElementById('modeGoalBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('goalLine', true); };
+    document.getElementById('modeTurnBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('turnLine', true); };
+    document.getElementById('modeLapBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('lapLine', true); };
+    document.getElementById('modeSecBtn').onclick = (e) => { e.stopPropagation(); setDrawMode('sector', true); };
     document.getElementById('sectorNumSelect').onchange = () => {
-        if (drawMode === 'sector') setDrawMode('sector');
+        if (drawMode === 'sector') setDrawMode('sector', true);
     };
 
     document.getElementById('courseSelect').onchange = toggleDeleteCourseButton;
@@ -811,9 +814,13 @@ function initializeAppOnce() {
         const key = getActiveLineKey();
         setLineByKey(key, null);
         saveLineToStorage(key, null);
+        activePoint = 'p1';
+        isDraggingEndpoint = false;
+        if (map && map.dragging) map.dragging.enable();
         applyTurnReturnRules(false);
         updatePointUI();
         redrawLines();
+        document.getElementById('drawGuide').textContent = '選択ラインを消去しました。P1から再設定できます';
     };
 
     document.getElementById('clearAllBtn').onclick = (e) => {
@@ -822,9 +829,13 @@ function initializeAppOnce() {
         lines = { startLine: null, goalLine: null, turnLine: null, lapLine: null, sectors: {} };
         ['startLine', 'goalLine', 'turnLine', 'lapLine'].forEach(k => saveLineToStorage(k, null));
         SECTOR_KEYS.forEach(k => saveLineToStorage(k, null));
+        activePoint = 'p1';
+        isDraggingEndpoint = false;
+        if (map && map.dragging) map.dragging.enable();
         applyTurnReturnRules(false);
         updatePointUI();
         redrawLines();
+        document.getElementById('drawGuide').textContent = '全ラインを消去しました。P1から再設定できます';
     };
 
     document.getElementById('courseModeSelect').onchange = syncCourseModeUI;
@@ -842,7 +853,7 @@ function initializeAppOnce() {
     };
 
     loadSavedState();
-    setDrawMode('startLine');
+    setDrawMode('startLine', true);
 }
 
 window.onload = () => {
