@@ -40,40 +40,47 @@
             padding: 8px 12px;
             flex-shrink: 0;
         }
-        #stline-lap {
-            font-size: 15px;
-            font-weight: bold;
-            color: var(--hrc-blue);
-            font-variant-numeric: tabular-nums;
+        .time-row-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
+        #stline-lap,
         #display1 {
-            font-size: 42px;
+            font-size: 46px;
             font-weight: 900;
-            line-height: 1.05;
+            line-height: 1.04;
             letter-spacing: -1px;
             font-variant-numeric: tabular-nums;
-            margin: 2px 0 4px;
+        }
+        #stline-lap {
+            color: var(--hrc-blue);
+        }
+        #display1 {
+            color: var(--text-dark);
         }
         .sub-times {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 8px;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: bold;
             font-variant-numeric: tabular-nums;
+            margin-top: 6px;
         }
         .best-label {
             background: var(--hrc-red);
             color: #fff;
-            font-size: 10px;
-            padding: 2px 5px;
+            font-size: 11px;
+            padding: 2px 6px;
             border-radius: 3px;
             margin-right: 4px;
         }
         #map-wrapper {
             width: 100%;
-            min-height: 90px;
+            height: 185px;
+            min-height: 150px;
             border: 1px solid #bbb;
             border-radius: 8px;
             overflow: hidden;
@@ -228,8 +235,10 @@
 
 <div id="dashboard">
     <div class="main-ui-container">
-        <div id="stline-lap">00:00.000</div>
-        <div id="display1">00:00.000</div>
+        <div class="time-row-group">
+            <div id="stline-lap">00:00.000</div>
+            <div id="display1">00:00.000</div>
+        </div>
         <div class="sub-times">
             <div id="display">TOTAL 00:00.000</div>
             <div id="best-display"><span class="best-label">BEST LAP</span>00:00.000</div>
@@ -262,7 +271,7 @@
         <button id="pauseBtn" type="button">PAUSE</button>
         <button id="lapBtn" type="button">LAP</button>
         <button id="historyBtn" type="button">HISTORY</button>
-        <button id="analyzerBtn" type="button" onclick="location.href='analyzer.html'">ANALYZER</button>
+        <button id="analyzerBtn" type="button" onclick="location.href='analyzer_3.html'">ANALYZER</button>
         <button id="gpxBtn" type="button" style="display:none; background:var(--hrc-orange); color:#fff; border-color:var(--hrc-orange);">GPX</button>
         <button id="settingsBtn" type="button" onclick="location.href='index.html'">SET</button>
         <button id="reloadBtn" type="button" onclick="location.reload()">RELOAD</button>
@@ -366,7 +375,7 @@ function syncMapAspectRatio() {
     if (!wrapper) return;
     const w = wrapper.clientWidth;
     if (w > 0) {
-        const h = Math.max(90, Math.min(180, Math.round(w / 3.5)));
+        const h = Math.max(155, Math.min(260, Math.round(w / 2.2)));
         wrapper.style.height = `${h}px`;
     }
     if (map) {
