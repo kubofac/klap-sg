@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="[https://unpkg.com/leaflet@1.7.1/dist/leaflet.css](https://unpkg.com/leaflet@1.7.1/dist/leaflet.css)" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <title>KLAP Road SETTINGS</title>
     <style>
         :root { --hrc-red: #D40024; --hrc-black: #000000; --bg-light: #ffffff; --hrc-orange: #D96B00; }
@@ -161,7 +161,7 @@
     </div>
 </div>
 
-<script src="[https://unpkg.com/leaflet@1.7.1/dist/leaflet.js](https://unpkg.com/leaflet@1.7.1/dist/leaflet.js)"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
 'use strict';
 
@@ -358,6 +358,7 @@ function createEndpointIcon(pointName, isSelected) {
 }
 
 function syncActiveEndpointEditors(line, color) {
+    if (!map || typeof L === 'undefined') return;
     if (activeLinePolyline) {
         map.removeLayer(activeLinePolyline);
         activeLinePolyline = null;
@@ -485,6 +486,7 @@ function getLineColor(key) {
 }
 
 function redrawLines() {
+    if (!map || typeof L === 'undefined') return;
     renderedLayers.forEach(layer => map.removeLayer(layer));
     renderedLayers = [];
 
@@ -672,7 +674,7 @@ function applySelectedCustomCourse() {
 
     const firstSectorLine = SECTOR_KEYS.map(k => lines.sectors[k]).find(Boolean);
     const focusLine = lines.lapLine || lines.startLine || lines.turnLine || firstSectorLine || lines.goalLine;
-    if (focusLine && focusLine.p1) {
+    if (map && focusLine && focusLine.p1) {
         map.setView([focusLine.p1.lat, focusLine.p1.lon], 17);
     }
 }
@@ -751,17 +753,6 @@ function initializeAppOnce() {
     initSelectorOptions();
     guardTopBarEvents();
 
-    map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 16);
-    L.tileLayer('[https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/](https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/){z}/{x}/{y}.jpg', {
-        maxZoom: 18,
-        attribution: '<a href="[https://maps.gsi.go.jp/development/ichiran.html](https://maps.gsi.go.jp/development/ichiran.html)" target="_blank">国土地理院</a>'
-    }).addTo(map);
-
-    map.on('click', (e) => {
-        if (!isAuthenticated() || isDraggingEndpoint) return;
-        setPointCoord(e.latlng.lat, e.latlng.lng, activePoint);
-    });
-
     document.getElementById('setP1Btn').onclick = (e) => {
         e.stopPropagation();
         activePoint = 'p1';
@@ -775,12 +766,14 @@ function initializeAppOnce() {
 
     document.getElementById('putP1CenterBtn').onclick = (e) => {
         e.stopPropagation();
+        if (!map) return;
         const c = map.getCenter();
         activePoint = 'p1';
         setPointCoord(c.lat, c.lng, 'p1');
     };
     document.getElementById('putP2CenterBtn').onclick = (e) => {
         e.stopPropagation();
+        if (!map) return;
         const c = map.getCenter();
         activePoint = 'p2';
         setPointCoord(c.lat, c.lng, 'p2');
@@ -788,7 +781,7 @@ function initializeAppOnce() {
 
     document.getElementById('gpsBtn').onclick = (e) => {
         e.stopPropagation();
-        if (!navigator.geolocation) return;
+        if (!navigator.geolocation || !map) return;
         navigator.geolocation.getCurrentPosition(pos => {
             map.setView([pos.coords.latitude, pos.coords.longitude], 17);
         }, () => {}, { enableHighAccuracy: true });
@@ -851,6 +844,21 @@ function initializeAppOnce() {
         saveAllSettings();
         if (isAuthenticated()) location.href = 'klap-marw.html';
     };
+
+    if (typeof L !== 'undefined') {
+        map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 16);
+        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+            maxZoom: 18,
+            attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>'
+        }).addTo(map);
+
+        map.on('click', (e) => {
+            if (!isAuthenticated() || isDraggingEndpoint) return;
+            setPointCoord(e.latlng.lat, e.latlng.lng, activePoint);
+        });
+    } else {
+        document.getElementById('drawGuide').textContent = '地図ライブラリ(Leaflet)の読み込みに失敗しました。通信状況を確認して再読み込みしてください。';
+    }
 
     loadSavedState();
     setDrawMode('startLine', true);
